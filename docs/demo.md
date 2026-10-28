@@ -4,7 +4,7 @@
 
 ![Pinakes 连续操作演示](pinakes-demo.gif)
 
-[查看更清晰、可暂停的视频（MP4）](pinakes-demo.mp4) · [English walkthrough](#english-walkthrough) · [完整使用指南](guide.md)
+[English walkthrough](#english-walkthrough) · [完整使用指南](guide.md)
 
 ## 看什么
 
@@ -21,7 +21,7 @@
 
 ## English walkthrough
 
-The animation above is a continuous demo edited from a real local Obsidian research session, with bilingual captions. [Open the MP4 version](pinakes-demo.mp4) for clearer playback and pause controls.
+The animation above is a continuous demo edited from a real local Obsidian research session, with bilingual captions.
 
 1. **Research overview.** Open the graph to see the library and its research topics.
 2. **Graph exploration.** Zoom and follow connections across topics.
