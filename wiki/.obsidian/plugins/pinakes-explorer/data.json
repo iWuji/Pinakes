@@ -3,9 +3,10 @@
   "readingStates": [],
   "tagColors": {},
   "nodeColors": {},
+  "welcomed": true,
   "cardSize": {
-    "w": 368,
-    "h": 381
+    "w": 376,
+    "h": 358
   },
   "cardPos": null
 }

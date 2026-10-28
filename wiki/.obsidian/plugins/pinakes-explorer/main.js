@@ -5066,8 +5066,12 @@ function createPlugin(obsidian) {
       contentEl.addClass("pnx-welcome");
       contentEl.createEl("h2").setText(this.isFresh ? "欢迎使用 Pinakes" : "Pinakes");
 
-      contentEl.createDiv({ cls: "pnx-welcome-lead" }).setText(
-        "一个**人读得懂、AI 也管得动**的论文知识库:笔记是唯一入口,每篇论文一个文件夹" +
+      // setText 不渲染 markdown:** 会原样显示 —— 粗体用 DOM 元素实现
+      const lead = contentEl.createDiv({ cls: "pnx-welcome-lead" });
+      lead.appendText("一个");
+      lead.createEl("b").setText("人读得懂、AI 也管得动");
+      lead.appendText(
+        "的论文知识库:笔记是唯一入口,每篇论文一个文件夹" +
         "(笔记 + PDF 同处一处),层级与关系全部写在 frontmatter 里 —— 图谱、看板、索引都从它派生。");
 
       const feats = contentEl.createDiv({ cls: "pnx-welcome-feats" });
@@ -5100,12 +5104,12 @@ function createPlugin(obsidian) {
       const primary = acts.createEl("button", { cls: "mod-cta" });
       primary.setText("新建第一篇论文");
       primary.addEventListener("click", () => {
-        modal.close();
+        this.close();
         if (this.onFirstPaper) this.onFirstPaper();
       });
       const later = acts.createEl("button");
       later.setText("以后再说");
-      later.addEventListener("click", () => modal.close());
+      later.addEventListener("click", () => this.close());
     }
     onClose() {
       this.contentEl.empty();

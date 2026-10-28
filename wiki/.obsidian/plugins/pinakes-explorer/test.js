@@ -145,7 +145,7 @@ for (const n of index.nodes.values()) {
   if (n.path.startsWith("papers/") && n.direction && n.direction !== "papers" &&
       !data.REP_RE.test(n.basename)) paperCount++;
 }
-if (FULL_VAULT) check("papers/ 论文笔记总数 = 439", paperCount === 439, String(paperCount));
+if (FULL_VAULT) check("papers/ 论文笔记总数 = 459", paperCount === 459, String(paperCount));
 
 console.log("\n== 关系边 ==");
 const relCounts = {};
@@ -157,11 +157,11 @@ console.log("  按类型:", JSON.stringify(relCounts));
 const relEdges = index.edges.filter((e) => data.REL_KEYS.includes(e.type));
 const plainEdges = index.edges.filter((e) => e.type === "plain");
 if (FULL_VAULT) {
-  check("有类型关系边 = 473(4 类口径,含块列表写法)", relEdges.length === 473, String(relEdges.length));
-  check("四类各自的条数 = 60/97/309/7(GFlowNet 补全后的拆分结果)", (() => {
+  check("有类型关系边 = 526(4 类口径,含块列表写法)", relEdges.length === 526, String(relEdges.length));
+  check("四类各自的条数 = 71/115/333/7(近两周 21 篇批次后的拆分结果)", (() => {
     const c = {};
     for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1;
-    return c.extends === 60 && c.uses === 97 && c.competes === 309 && c.contradicts === 7;
+    return c.extends === 71 && c.uses === 115 && c.competes === 333 && c.contradicts === 7;
   })(), JSON.stringify((() => { const c = {}; for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1; return c; })()));
 }
 check("边只有 4 类关系 + 正文默认链接", index.edges.every(
