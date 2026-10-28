@@ -13,4 +13,3 @@ title: "【索引】llm4rec"
 - [[【索引】llm4rec-05-Reasoning推理]]
 - [[【索引】llm4rec-06-Agentic智能体]]
 - [[【索引】llm4rec-07-数据部署与评测]]
-- [[【索引】llm4rec-08-判别式打分与排序]]

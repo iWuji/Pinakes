@@ -288,7 +288,23 @@ const GHOST_ALPHA = 0.5;
 const EDGE_ALPHA = { rel: 0.45, relHover: 0.6, plain: 0.42, attr: 0.3 };
 const EDGE_WIDTH = { rel: 1.35, relHover: 1.9, other: 1 };
 const EDGE_ALPHA_HIER = 0.16;   // 层级线:极淡 —— 它是结构底噪,不该撑成"蜘蛛网"(树里已经表达了归属)
-const EDGE_WIDTH_HIER = 0.8;
+const EDGE_WIDTH_HIER = 0.9;
+// 曲线边:中点沿法向偏移 bend × 边长(比例固定,长短边曲率观感一致)。
+// 方向由端点 id 排序决定 —— 同一对节点的 A→B 与 B→A 弯向**同侧**,
+// 于是关系边与默认链接(两端的直连)自然分开,不再叠成直线重影。
+// 参考:Neo4j Bloom / Kumu / Cytoscape 的 curved edges 都是这一招。
+const EDGE_BEND = 0.07;
+
+/** 二次贝塞尔控制点。绘制与 pickEdge 命中共用,保证"看到的就是点到的"。 */
+function edgePoints(e) {
+  const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const bend = EDGE_BEND * len * (e.src < e.dst ? 1 : -1);
+  return {
+    mx: (e.a.x + e.b.x) / 2 - (dy / len) * bend,
+    my: (e.a.y + e.b.y) / 2 + (dx / len) * bend,
+  };
+}
 // 力导向参数:层级弹簧短(论文贴着索引)、关系弹簧略短(相关的聚一起)、斥力收敛、向心略强
 const REST_LEN = { hier: 60, attr: 90, rel: 130 };
 const REPULSION = 2100;
@@ -4292,13 +4308,23 @@ function createPlugin(obsidian) {
           if (this.editMode && (e.type === HIER_TYPE || e.type === ATTR_TYPE)) continue;
           const ax = e.a.x * this.k + this.tx, ay = e.a.y * this.k + this.ty;
           const bx = e.b.x * this.k + this.tx, by = e.b.y * this.k + this.ty;
-          const dx = bx - ax, dy = by - ay;
-          const len2 = dx * dx + dy * dy;
-          let t = len2 ? ((mx - ax) * dx + (my - ay) * dy) / len2 : 0;
-          t = Math.max(0, Math.min(1, t));
-          const px = ax + dx * t, py = ay + dy * t;
-          const d = Math.hypot(mx - px, my - py);
-          if (d < bestD) { bestD = d; best = e; }
+          // 边是曲线(edgePoints 的贝塞尔),命中用 12 段折线近似 —— 与看到的弧一致。
+          const { mx: cmx, my: cmy } = edgePoints(e);
+          const cxm = cmx * this.k + this.tx, cym = cmy * this.k + this.ty;
+          const STEPS = 12;
+          let px = ax, py = ay;
+          for (let i = 1; i <= STEPS; i++) {
+            const t = i / STEPS, u = 1 - t;
+            const qx = u * u * ax + 2 * u * t * cxm + t * t * bx;
+            const qy = u * u * ay + 2 * u * t * cym + t * t * by;
+            const dx = qx - px, dy = qy - py;
+            const len2 = dx * dx + dy * dy;
+            let tt = len2 ? ((mx - px) * dx + (my - py) * dy) / len2 : 0;
+            tt = Math.max(0, Math.min(1, tt));
+            const d = Math.hypot(mx - (px + dx * tt), my - (py + dy * tt));
+            if (d < bestD) { bestD = d; best = e; }
+            px = qx; py = qy;
+          }
         }
         return best;
       };
@@ -4459,6 +4485,8 @@ function createPlugin(obsidian) {
       // ── 边:分两遍画 —— 结构底层(层级/归属/默认链接)先铺,关系边压在上面。
       // 混在一起画时,31 根层级辐条会把关系网切得读不出来。
       const drawEdgePass = (structural) => {
+      // 线宽随缩放微调:缩小(<0.6)时下限抬高(太细会糊成一片),放大(>1.4)回落原值
+      const zoomW = this.k < 0.6 ? 1.35 : this.k > 1.4 ? 1 : 1.15;
       for (const e of this.simEdges) {
         const isStruct = e.type === HIER_TYPE || e.type === ATTR_TYPE || e.type === PLAIN_TYPE;
         if (isStruct !== structural) continue;
@@ -4479,9 +4507,9 @@ function createPlugin(obsidian) {
         ctx.globalAlpha = isSel ? 0.95 : hot ? baseAlpha : 0.05;
         ctx.strokeStyle = color;
         ctx.lineWidth = isSel ? 3 : isHot ? 2.2
-          : isRel ? (hoverId && hot ? EDGE_WIDTH.relHover : EDGE_WIDTH.rel)
+          : isRel ? (hoverId && hot ? EDGE_WIDTH.relHover : EDGE_WIDTH.rel * zoomW)
           : e.type === HIER_TYPE ? EDGE_WIDTH_HIER
-          : e.type === PLAIN_TYPE ? 1.15 : EDGE_WIDTH.other;
+          : e.type === PLAIN_TYPE ? 1.15 * zoomW : EDGE_WIDTH.other * zoomW;
         // 默认链接用**长虚线**(5 实 4 空):一眼区别于实线,但不会虚到像噪点
         ctx.setLineDash(e.type === ATTR_TYPE ? [3, 4] : e.type === PLAIN_TYPE ? [5, 4] : []);
         // 端点落在**圆的边缘**而不是圆心:枢纽(索引节点)周围几十根辐条不再于圆心叠成一团,
@@ -4491,19 +4519,25 @@ function createPlugin(obsidian) {
         const eux = edx / ed, euy = edy / ed;
         const x1 = e.a.x + eux * (e.a.r + 1), y1 = e.a.y + euy * (e.a.r + 1);
         const x2 = e.b.x - eux * (e.b.r + 1), y2 = e.b.y - euy * (e.b.r + 1);
+        // 全局柔曲线:统一曲率的二次贝塞尔(edgePoints 与 pickEdge 共用同一控制点)
+        const { mx, my } = edgePoints(e);
         ctx.beginPath();
         ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+        ctx.quadraticCurveTo(mx, my, x2, y2);
         ctx.stroke();
-        // 箭头:只给有方向的边、只在线够长画得下时画(太短的边画箭头只会糊在一起)
+        // 箭头:沿**曲线末端的切线**方向(二次贝塞尔终点导数 = 2·(终点-控制点)),
+        // 不用直线方向 —— 曲线后直线方向会让箭头歪。只给有方向的边、线够长才画。
         if (meta && !meta.symmetric && this.k > 0.5 && ed * this.k > 26) {
+          const tx2 = x2 - mx, ty2 = y2 - my;
+          const tl = Math.max(Math.hypot(tx2, ty2), 1);
+          const tux = tx2 / tl, tuy = ty2 / tl;
           ctx.setLineDash([]);
           ctx.globalAlpha = ctx.globalAlpha * 0.85;
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.moveTo(x2, y2);
-          ctx.lineTo(x2 - eux * 4.5 - euy * 2, y2 - euy * 4.5 + eux * 2);
-          ctx.lineTo(x2 - eux * 4.5 + euy * 2, y2 - euy * 4.5 - eux * 2);
+          ctx.lineTo(x2 - tux * 4.5 - tuy * 2, y2 - tuy * 4.5 + tux * 2);
+          ctx.lineTo(x2 - tux * 4.5 + tuy * 2, y2 - tuy * 4.5 - tux * 2);
           ctx.closePath();
           ctx.fill();
         }
@@ -5137,6 +5171,7 @@ if (obsidian) {
     parseFrontmatter, extractWikilinks, patchRelation, readRelation, patchScalarField, bodyNoteLinks,
     buildWikiIndex, computeSubGraph, buildIndexSection, sectionNoteLinks,
     DEFAULT_SCHEMA, kindOfPath, sectionsForKind, statusFieldOf, rootDirOf, rootDirsOf, adapters,
+    edgePoints,
     splitFrontmatter, groupFields,
     posixDirname, baseName, dirOf, rgbIntToHex, truncate,
   };
