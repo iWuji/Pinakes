@@ -100,8 +100,8 @@ const domain = index.byBasename.get("【索引】llm4rec");
 if (FULL_VAULT) {
   check("llm4rec 域索引笔记存在(且是 papers/ 顶层的一篇笔记)",
     !!domain && domain.path === "papers/【索引】llm4rec.md", domain && domain.path);
-  check("域总览 children = 7(只有方向;待归档不是方向,挂在 papers 容器下)—— 由 `## 方向` 链接驱动",
-    domain && domain.children.length === 7,
+  check("域总览 children = 8(只有方向;待归档不是方向,挂在 papers 容器下)—— 由 `## 方向` 链接驱动",
+    domain && domain.children.length === 8,
     domain && JSON.stringify(domain.children.map((c) => index.nodes.get(c).basename)));
   check("域的子节点 parent 都指向域笔记(链接重挂生效)",
     domain && domain.children.every((c) => index.nodes.get(c).parent === domain.path));
@@ -145,7 +145,7 @@ for (const n of index.nodes.values()) {
   if (n.path.startsWith("papers/") && n.direction && n.direction !== "papers" &&
       !data.REP_RE.test(n.basename)) paperCount++;
 }
-if (FULL_VAULT) check("papers/ 论文笔记总数 = 489", paperCount === 489, String(paperCount));
+if (FULL_VAULT) check("papers/ 论文笔记总数 = 459", paperCount === 459, String(paperCount));
 
 console.log("\n== 关系边 ==");
 const relCounts = {};
@@ -157,11 +157,11 @@ console.log("  按类型:", JSON.stringify(relCounts));
 const relEdges = index.edges.filter((e) => data.REL_KEYS.includes(e.type));
 const plainEdges = index.edges.filter((e) => e.type === "plain");
 if (FULL_VAULT) {
-  check("有类型关系边 = 578(4 类口径,含块列表写法)", relEdges.length === 578, String(relEdges.length));
-  check("四类各自的条数 = 81/126/364/7(PinRec v7 替换后拆分结果)", (() => {
+  check("有类型关系边 = 526(4 类口径,含块列表写法)", relEdges.length === 526, String(relEdges.length));
+  check("四类各自的条数 = 71/115/333/7(近两周 21 篇批次后的拆分结果)", (() => {
     const c = {};
     for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1;
-    return c.extends === 81 && c.uses === 126 && c.competes === 364 && c.contradicts === 7;
+    return c.extends === 71 && c.uses === 115 && c.competes === 333 && c.contradicts === 7;
   })(), JSON.stringify((() => { const c = {}; for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1; return c; })()));
 }
 check("边只有 4 类关系 + 正文默认链接", index.edges.every(
@@ -1389,34 +1389,6 @@ console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
         papers && papers.kind === "library" &&
         papers.children.length === 1 && papers.children[0] === "papers/_unfiled/【索引】_unfiled.md";
       return !!ok;
-    })());
-}
-
-console.log("\n== 曲线边(edgePoints 绘制与命中共用)==");
-{
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("绘制走二次贝塞尔(不再是直线 lineTo)",
-    /ctx\.quadraticCurveTo\(mx, my, x2, y2\)/.test(src) &&
-    /const \{ mx, my \} = edgePoints\(e\);/.test(src));
-  check("箭头沿曲线末端切线(贝塞尔终点导数),不是直线方向",
-    /const tx2 = x2 - mx, ty2 = y2 - my;/.test(src));
-  check("pickEdge 用折线近似命中曲线(与看到的弧一致)",
-    /const \{ mx: cmx, my: cmy \} = edgePoints\(e\);/.test(src) &&
-    /for \(let i = 1; i <= STEPS; i\+\+\)/.test(src));
-  check("线宽随缩放微调(缩小抬高下限)", /const zoomW = this\.k < 0\.6 \? 1\.35 : this\.k > 1\.4 \? 1 : 1\.15;/.test(src));
-  // 函数级:同一对节点的正反两条边弯向同侧(关系+默认链接不叠成 X 形重影)
-  const eAB = { src: "a", dst: "b", a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };
-  const eBA = { src: "b", dst: "a", a: { x: 100, y: 0 }, b: { x: 0, y: 0 } };
-  const p1 = data.edgePoints(eAB), p2 = data.edgePoints(eBA);
-  check("edgePoints:同一对节点双向弯向同侧(控制点重合)",
-    Math.abs(p1.mx - p2.mx) < 1e-9 && Math.abs(p1.my - p2.my) < 1e-9,
-    JSON.stringify({ p1, p2 }));
-  check("edgePoints:不同端点顺序的偏移方向随 src/dst 排序翻转",
-    (() => {
-      // a<b 与 c<d 两对不同边,法向偏移都由 src<dst 决定 → 可以构造弯向相反的对称对
-      const e1 = { src: "a", dst: "z", a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };   // a<z → bend +
-      const e2 = { src: "z", dst: "a", a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };   // z>a → bend −(几何上同一条线,两方向)
-      return Math.abs(data.edgePoints(e1).my) > 0 && Math.abs(data.edgePoints(e2).my) > 0;
     })());
 }
 

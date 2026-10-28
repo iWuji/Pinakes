@@ -33,7 +33,6 @@ axes:
     - retrieval-augmented    # 检索增强生成
     - long-sequence          # 长序列建模与截断
     - positional-encoding    # 位置编码 / 结构先验注入
-    - discriminative-scaling  # 判别式 ranker 的 scaling（WuKong/RankMixer 系,与生成式 scaling 对照）
 
   兴趣意图关系:
     - multi-interest         # 多兴趣 / 兴趣解耦
