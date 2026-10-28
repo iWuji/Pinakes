@@ -153,6 +153,13 @@
         "a": 1,
         "rgb": 15728640
       }
+    },
+    {
+      "query": "path:\"deeprec-03-经典基座\"",
+      "color": {
+        "a": 1,
+        "rgb": 6352896
+      }
     }
   ],
   "collapse-display": true,

@@ -66,6 +66,7 @@ axes:
     - industrial-deployment  # 工业落地经验
     - serving                # 在线推理 / 时延 / 成本
     - scaling-law            # scaling 规律
+    - discriminative-scaling  # 判别式 ranker 的 scaling(WuKong/RankMixer 系,与生成式 scaling 对照)
     - compression            # 模型 / 索引压缩(不含上下文压缩,那个用 context-compression)
     - context-compression    # 把长上下文 / 行为序列压成少量 latent token
     - advertising            # 广告场景
