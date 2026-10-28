@@ -25,6 +25,14 @@ Read papers, refine notes, and connect ideas in a personal knowledge base you ca
 
 **The paper wiki's organization draws on Andrej Karpathy's [LLM Wiki](docs/llm-wiki.md)** ([original source](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)). Pinakes builds on its approach of turning source material into an evolving collection of linked notes, adding visual navigation, direct editing, and explicit collaboration conventions for paper research. A complete copy of the original is included in this repository.
 
+## In action
+
+![Pinakes in a real research vault: topic tree and paper relationships](docs/pinakes-overview.webp)
+
+Start with a research topic, then follow the connections between papers. Captured from a real local research vault; the example papers and research content are not bundled with the installer. The current interface is in Chinese.
+
+**[See the illustrated walkthrough: add a paper → browse topics → explore relationships and properties](docs/demo.md#english-walkthrough)**
+
 ## Make AI-organized knowledge a place for your own thinking
 
 AI can summarize a paper quickly. What deserves to stay with it is what you notice: a passage worth revisiting, a question left unanswered, or a connection to your current research.
