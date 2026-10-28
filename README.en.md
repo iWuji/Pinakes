@@ -27,11 +27,11 @@ Read papers, refine notes, and connect ideas in a personal knowledge base you ca
 
 ## In action
 
-![Pinakes in a real research vault: topic tree and paper relationships](docs/pinakes-overview.webp)
+![Pinakes walkthrough: browse the library, focus on papers, follow relationships, and switch topics](docs/pinakes-demo.gif)
 
-Start with a research topic, then follow the connections between papers. Captured from a real local research vault; the example papers and research content are not bundled with the installer. The current interface is in Chinese.
+Start with the whole library, focus on a paper, follow its connections, and return to the topic tree. This animation is edited from a real local research session; example papers and research content are not bundled with the installer. The current interface is in Chinese, with bilingual captions in the demo.
 
-**[See the illustrated walkthrough: add a paper → browse topics → explore relationships and properties](docs/demo.md#english-walkthrough)**
+**[Watch the clearer video](docs/pinakes-demo.mp4) · [Demo guide](docs/demo.md#english-walkthrough)**
 
 ## Make AI-organized knowledge a place for your own thinking
 
