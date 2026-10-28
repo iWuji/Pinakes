@@ -25,7 +25,7 @@
 
 **论文 Wiki 的组织形式参考 Andrej Karpathy 的 [LLM Wiki](docs/llm-wiki.md)**（[上游原文](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)）。Pinakes 延续其由原始资料持续积累相互链接笔记的思路，并为论文研究补上可视化浏览、直接编辑和明确的协作约定。参考原文完整收录在本仓库。
 
-## 实际界面
+## Demo
 
 ![Pinakes 连续操作演示：整库浏览、论文聚焦、关系探索与跨方向导航](docs/pinakes-demo.gif)
 

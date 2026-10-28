@@ -25,7 +25,7 @@ Read papers, refine notes, and connect ideas in a personal knowledge base you ca
 
 **The paper wiki's organization draws on Andrej Karpathy's [LLM Wiki](docs/llm-wiki.md)** ([original source](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)). Pinakes builds on its approach of turning source material into an evolving collection of linked notes, adding visual navigation, direct editing, and explicit collaboration conventions for paper research. A complete copy of the original is included in this repository.
 
-## In action
+## Demo
 
 ![Pinakes walkthrough: browse the library, focus on papers, follow relationships, and switch topics](docs/pinakes-demo.gif)
 
