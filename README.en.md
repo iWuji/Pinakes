@@ -27,9 +27,9 @@ Read papers, refine notes, and connect ideas in a personal knowledge base you ca
 
 ## Demo
 
-![Pinakes walkthrough: browse the library, focus on papers, follow relationships, and switch topics](docs/pinakes-demo.gif)
+![Pinakes walkthrough: explore the graph, read structured notes alongside PDFs, and add papers](docs/pinakes-demo.gif)
 
-Start with the whole library, focus on a paper, follow its connections, and return to the topic tree. This animation is edited from a real local research session; example papers and research content are not bundled with the installer. The current interface is in Chinese, with bilingual captions in the demo.
+Explore the research graph, open a structured note alongside its PDF, and return to the graph to explore and add papers. This animation is edited from a real local research session; example papers and research content are not bundled with the installer. The current interface is in Chinese, with bilingual captions in the demo.
 
 **[Watch the clearer video](docs/pinakes-demo.mp4) · [Demo guide](docs/demo.md#english-walkthrough)**
 
