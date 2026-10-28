@@ -1,0 +1,170 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": true,
+  "colorGroups": [
+    {
+      "query": "path:\"llm4rec-01-表示与Tokenization\"",
+      "color": {
+        "a": 1,
+        "rgb": 5017087
+      }
+    },
+    {
+      "query": "path:\"llm4rec-02-模型与架构\"",
+      "color": {
+        "a": 1,
+        "rgb": 3066993
+      }
+    },
+    {
+      "query": "path:\"llm4rec-03-训练目标与偏好对齐\"",
+      "color": {
+        "a": 1,
+        "rgb": 11035551
+      }
+    },
+    {
+      "query": "path:\"llm4rec-04-用户理解与行为建模\"",
+      "color": {
+        "a": 1,
+        "rgb": 16747746
+      }
+    },
+    {
+      "query": "path:\"llm4rec-05-Reasoning推理\"",
+      "color": {
+        "a": 1,
+        "rgb": 16761095
+      }
+    },
+    {
+      "query": "path:\"llm4rec-06-Agentic智能体\"",
+      "color": {
+        "a": 1,
+        "rgb": 15277667
+      }
+    },
+    {
+      "query": "path:\"llm4rec-07-数据部署与评测\"",
+      "color": {
+        "a": 1,
+        "rgb": 7951688
+      }
+    },
+    {
+      "query": "path:\"deeprec-01-多兴趣检索\"",
+      "color": {
+        "a": 1,
+        "rgb": 9159498
+      }
+    },
+    {
+      "query": "path:\"_unfiled\"",
+      "color": {
+        "a": 1,
+        "rgb": 10133670
+      }
+    },
+    {
+      "query": "path:\"【索引】llm4rec.md\"",
+      "color": {
+        "a": 1,
+        "rgb": 48340
+      }
+    },
+    {
+      "query": "path:\"【索引】deeprec.md\"",
+      "color": {
+        "a": 1,
+        "rgb": 4149685
+      }
+    },
+    {
+      "query": "path:\"deep-research\"",
+      "color": {
+        "a": 1,
+        "rgb": 15277747
+      }
+    },
+    {
+      "query": "path:\"【索引】papers.md\"",
+      "color": {
+        "a": 1,
+        "rgb": 8226192
+      }
+    },
+    {
+      "query": "path:\"deeprec-02-损失函数与负采样\"",
+      "color": {
+        "a": 1,
+        "rgb": 16740419
+      }
+    },
+    {
+      "query": "path:\"genmodel-01-扩散与流匹配\"",
+      "color": {
+        "a": 1,
+        "rgb": 35195
+      }
+    },
+    {
+      "query": "path:\"genmodel-02-判别器与能量指导\"",
+      "color": {
+        "a": 1,
+        "rgb": 16053373
+      }
+    },
+    {
+      "query": "path:\"genmodel-03-分布蒸馏与少步生成\"",
+      "color": {
+        "a": 1,
+        "rgb": 8254708
+      }
+    },
+    {
+      "query": "path:\"llm4rec-08-判别式打分与排序\"",
+      "color": {
+        "a": 1,
+        "rgb": 9316596
+      }
+    },
+    {
+      "query": "path:\"llm-01-模型与生成\"",
+      "color": {
+        "a": 1,
+        "rgb": 240
+      }
+    },
+    {
+      "query": "path:\"llm-02-训练与对齐\"",
+      "color": {
+        "a": 1,
+        "rgb": 61440
+      }
+    },
+    {
+      "query": "path:\"llm-03-技术报告\"",
+      "color": {
+        "a": 1,
+        "rgb": 15728640
+      }
+    }
+  ],
+  "collapse-display": true,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": false,
+  "centerStrength": 0.518713248970312,
+  "repelStrength": 10,
+  "linkStrength": 1,
+  "linkDistance": 250,
+  "scale": 0.5687941156905303,
+  "close": true
+}

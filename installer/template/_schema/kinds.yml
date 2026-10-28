@@ -1,0 +1,147 @@
+# Pinakes 实体类型注册表（权威）
+#
+# 这是 kinds 的唯一真源。`tools/schema.py` 会把它编译成 `_schema/.compiled.json`，
+# 插件（main.js）与 Python 工具都只读那份编译产物；改完这里跑一次：
+#   python3 tools/pinakes.py schema --apply
+# lint 会检查编译产物是否过期（category: schema-stale）。
+#
+# 字段含义见 Pinakes/ENTITY_MODEL.md §3–§5。
+
+schema_version: 1
+
+# ---------- 扫描规则：哪些目录/文件不是实体 ----------
+scan:
+  skip_dirs: [".obsidian", "_dashboards", "_templates", "_schema"]
+  skip_files: ["AGENTS", "log"]
+  # 目录里的「代表笔记」模式（有它，这个目录才成为实体容器）
+  rep_patterns:
+    - "^【索引】"
+    - "^【Deep Research】"
+
+# ---------- kind 定义 ----------
+#
+# rep            : 代表笔记的 basename 模式(该 kind 的笔记在目录里时,目录以它为节点)
+# children_section: 用哪一节列子节点(容器 kind 必需;叶子 kind 省略)
+# default_depth  : self | 1 | 2 | ... | full
+# leaf           : 叶子实体(没有子节点)
+# naming         : 文件夹/笔记/附件同名时的命名模板(用 naming_fields 里的字段填充)
+# member_kind    : 容器的子实体默认 kind
+# status_field   : 进度轴字段(详情卡/树徽标显示;reading=阅读 / stage=阶段;不声明=没有状态行)
+# root_dir       : 这类实体的树所在的顶层目录(插件用它替代写死的 papers/ ideas/ 路径判断)
+kinds:
+
+  root:
+    description: 库首页（【索引】研究总览.md），列出所有域
+    rep: "^【索引】"
+    children_sections: ["## 大类别"]
+    default_depth: full
+    member_kind: library
+
+  library:
+    description: 论文库入口（papers/【索引】papers.md）
+    rep: "^【索引】"
+    # 一个容器可以有多节列子节点：域 + 唯一的非方向分区（待归档）
+    children_sections: ["## 大类别", "## 待归档"]
+    default_depth: full
+    member_kind: domain
+    root_dir: papers
+
+  domain:
+    description: 域（大类别），如 llm4rec / deeprec / genmodel
+    rep: "^【索引】"
+    children_section: "## 方向"
+    default_depth: full
+    member_kind: direction
+    root_dir: papers
+
+  direction:
+    description: 方向（论文分组），如 llm4rec-02-模型与架构
+    rep: "^【索引】"
+    children_section: "## 论文"
+    default_depth: full
+    member_kind: paper
+    root_dir: papers
+    # 索引表的列（行内顺序固定：论文链接 / year / tags / table_summary）
+    index_columns: [论文, 年份, 关键词, 简介]
+
+  partition:
+    description: 论文库里的非方向分区（目前只有 _unfiled 待归档）
+    rep: "^【索引】"
+    children_section: "## 论文"
+    default_depth: full
+    member_kind: paper
+    root_dir: papers
+
+  paper:
+    description: 一篇论文（笔记 + PDF 同处一个文件夹）
+    leaf: true
+    default_depth: full
+    naming: "【{year}】{slug}"
+    naming_fields: [year, slug]
+    root_dir: papers
+    status_field: reading
+
+  topic_library:
+    description: 深度调研专题总览（deep-research/【索引】深度调研专题总览.md）
+    rep: "^【索引】"
+    children_section: null
+    default_depth: full
+    member_kind: topic
+    root_dir: deep-research
+
+  topic:
+    description: 深度调研专题页（【Deep Research】<topic>.md）
+    leaf: true
+    default_depth: self
+    root_dir: deep-research
+
+  idea_library:
+    description: Ideas 入口（ideas/【索引】Ideas.md）
+    rep: "^【索引】"
+    children_section: null
+    default_depth: full
+    member_kind: idea_package
+    root_dir: ideas
+
+  idea_package:
+    description: 一个想法/方案包（ideas/<idea>/【索引】<idea> 方案包.md）
+    rep: "^【索引】"
+    children_section: null
+    default_depth: full
+    member_kind: idea
+    root_dir: ideas
+
+  idea:
+    description: 想法/方案稿（【idea】<名字>.md）
+    leaf: true
+    default_depth: self
+    root_dir: ideas
+    status_field: stage
+
+# ---------- 从路径推断 kind（按顺序匹配，第一条命中即用）----------
+# 新增 kind 时在这里补一条规则；插件与 lint 都按它推断。
+detect:
+  - kind: root
+    path_regex: '^【索引】[^/]+\.md$'
+  - kind: library
+    path_regex: '^papers/【索引】papers\.md$'
+  - kind: domain
+    path_regex: '^papers/【索引】[^/]+\.md$'
+  - kind: partition
+    path_regex: '^papers/_unfiled/【索引】[^/]+\.md$'
+  - kind: direction
+    path_regex: '^papers/[^/]+/【索引】[^/]+\.md$'
+  - kind: paper
+    path_regex: '^papers/[^/]+/【\d{4}】[^/]+/【\d{4}】[^/]+\.md$'
+  - kind: topic_library
+    path_regex: '^deep-research/【索引】[^/]+\.md$'
+  - kind: topic
+    path_regex: '^deep-research/.+/【Deep Research】[^/]+\.md$'
+  - kind: skill_library
+    path_regex: '^skills/【索引】[^/]+\.md$'
+  - kind: idea_library
+    path_regex: '^ideas/【索引】[^/]+\.md$'
+  - kind: idea_package
+    path_regex: '^ideas/[^/]+/【索引】[^/]+\.md$'
+  - kind: idea
+    path_regex: '^ideas/.+/【idea】[^/]+\.md$'

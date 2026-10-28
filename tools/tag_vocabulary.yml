@@ -1,0 +1,136 @@
+# Pinakes 标签受控词表
+#
+# tags 是 wiki 唯一的细粒度检索维度,唯一真源是每篇论文 frontmatter 的 `tags`。
+# 方向索引里显示的标签由 `research_wiki.py rebuild-index` 从这里生成,不要手写。
+#
+# 规则:
+#   - 一律英文 kebab-case(与 slug 风格一致)。
+#   - 每篇 2–4 个,写「方法角度」而不是宽泛领域词(别写 recommendation / llm / deep-learning)。
+#   - 新角度请加到下面对应 axis 里再使用;lint 会对词表外的标签告警。
+#   - aliases 是历史中文写法 → canonical 的映射,只用于迁移和容错输入。
+
+axes:
+  表示与Tokenization:
+    - semantic-id            # 语义 ID / SID 本身
+    - quantization           # 向量量化(VQ/RQ 以外的泛指)
+    - residual-quantization  # RQ-VAE 一族
+    - codebook               # 码本容量 / 利用率 / 坍缩
+    - user-token             # 用户侧 token 化
+    - multimodal             # 多模态表示
+    - cross-domain           # 跨域 / 多域表示迁移
+    - variable-length        # 变长标识符
+
+  生成式建模与架构:
+    - autoregressive         # AR 逐 token 生成
+    - non-autoregressive     # NAR / 并行解码
+    - diffusion              # 扩散 / flow matching
+    - mtp                    # multi-token prediction
+    - ntp                    # next-token prediction 目标本身
+    - moe                    # 专家混合 / 路由
+    - one-model              # 召排一体 / 单模型端到端
+    - reranking              # 生成式重排
+    - slate                  # 整页 / 列表级生成
+    - retrieval-augmented    # 检索增强生成
+    - long-sequence          # 长序列建模与截断
+    - positional-encoding    # 位置编码 / 结构先验注入
+
+  兴趣意图关系:
+    - multi-interest         # 多兴趣 / 兴趣解耦
+    - query-intent           # 查询意图识别 / 分类(搜索侧意图,区别于触发意图 TIR)
+    - trigger-intent         # 触发意图(TIR)
+    - complementary-substitute  # 互补 / 替代关系
+    - bundle                 # 成套 / 搭配
+    - multi-behavior         # 多行为建模
+    - knowledge-graph        # 知识图谱注入
+    - multi-relation         # 多关系建模(非单一相似轴)
+
+  训练与偏好对齐:
+    - dpo                    # DPO 及其变体
+    - preference-alignment   # 偏好对齐的泛指(DPO/RLHF 之外的对齐目标与一致性约束)
+    - reinforcement-learning # RL 训练:策略梯度 / PPO / GRPO
+    - reward-model           # 奖励模型
+    - reward-decoding        # 奖励引导解码
+    - process-supervision    # 过程监督
+    - distillation           # 蒸馏
+    - self-training          # 自训练
+    - contrastive-learning   # 对比学习
+    - soft-label             # 软标签 / 目标分布监督
+    - cross-entropy          # 交叉熵目标的性质
+    - softmax                # softmax 本身的性质
+    - sampled-softmax        # 采样 softmax / 负采样
+    - pareto                 # 多目标 / 帕累托
+    - verifier               # 验证器 / 判别式校验
+    - gflownet               # GFlowNet 一族
+
+  系统Agent评估:
+    - industrial-deployment  # 工业落地经验
+    - serving                # 在线推理 / 时延 / 成本
+    - scaling-law            # scaling 规律
+    - compression            # 模型 / 索引压缩(不含上下文压缩,那个用 context-compression)
+    - context-compression    # 把长上下文 / 行为序列压成少量 latent token
+    - advertising            # 广告场景
+    - e-commerce             # 电商场景
+    - livestreaming          # 直播场景
+    - agent                  # 单 agent 工作流
+    - multi-agent            # 多 agent 协作
+    - reasoning              # 显式推理 / CoT
+    - debiasing              # 去偏
+    - generalization         # 泛化 / OOD
+    - cold-start             # 冷启动
+    - uncertainty            # 不确定性建模
+    - calibration            # 概率校准:ECE / Platt / isotonic / 后处理校正
+
+  文献类型:
+    - survey                 # 综述
+    - technical-report       # 技术报告
+    - baseline               # 经典 baseline / 奠基工作
+
+# 历史中文写法 → canonical。新笔记不要再用左侧写法。
+aliases:
+  语义ID: semantic-id
+  量化: quantization
+  残差量化: residual-quantization
+  码本: codebook
+  用户token: user-token
+  多模态: multimodal
+  跨域: cross-domain
+  可变长: variable-length
+  自回归: autoregressive
+  非自回归: non-autoregressive
+  扩散: diffusion
+  MTP多token: mtp
+  MoE: moe
+  重排: reranking
+  检索增强: retrieval-augmented
+  长序列: long-sequence
+  多兴趣: multi-interest
+  触发意图: trigger-intent
+  互补替代: complementary-substitute
+  多行为: multi-behavior
+  知识图谱: knowledge-graph
+  多关系: multi-relation
+  DPO: dpo
+  奖励模型: reward-model
+  过程监督: process-supervision
+  蒸馏: distillation
+  自训练: self-training
+  对比学习: contrastive-learning
+  软标签: soft-label
+  交叉熵: cross-entropy
+  采样softmax: sampled-softmax
+  验证器: verifier
+  GFlowNet: gflownet
+  工业落地: industrial-deployment
+  压缩: compression
+  广告: advertising
+  电商: e-commerce
+  直播: livestreaming
+  多agent: multi-agent
+  推理: reasoning
+  去偏: debiasing
+  泛化: generalization
+  冷启动: cold-start
+  不确定性: uncertainty
+  校准: calibration
+  综述: survey
+  技术报告: technical-report

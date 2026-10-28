@@ -1,0 +1,16 @@
+{
+  "name": "pinakes-explorer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinakes research library plugin for Obsidian",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs --watch",
+    "check": "node tools/check-plugin.mjs",
+    "test": "node src/test.js installer/template && node tools/test-bundle.cjs && node tools/test-release.mjs",
+    "test:vault": "node src/test.js wiki"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

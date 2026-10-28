@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "scan": {
+    "skip_dirs": [
+      ".obsidian",
+      "_dashboards",
+      "_templates",
+      "_schema"
+    ],
+    "skip_files": [
+      "AGENTS",
+      "log"
+    ],
+    "rep_patterns": [
+      "^【索引】",
+      "^【Deep Research】"
+    ]
+  },
+  "kinds": {
+    "root": {
+      "id": "root",
+      "description": "库首页（【索引】研究总览.md），列出所有域",
+      "rep": "^【索引】",
+      "children_section": null,
+      "children_sections": [
+        "## 大类别"
+      ],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "library",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": null
+    },
+    "library": {
+      "id": "library",
+      "description": "论文库入口（papers/【索引】papers.md）",
+      "rep": "^【索引】",
+      "children_section": null,
+      "children_sections": [
+        "## 大类别",
+        "## 待归档"
+      ],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "domain",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "papers"
+    },
+    "domain": {
+      "id": "domain",
+      "description": "域（大类别），如 llm4rec / deeprec / genmodel",
+      "rep": "^【索引】",
+      "children_section": "## 方向",
+      "children_sections": [
+        "## 方向"
+      ],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "direction",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "papers"
+    },
+    "direction": {
+      "id": "direction",
+      "description": "方向（论文分组），如 llm4rec-02-模型与架构",
+      "rep": "^【索引】",
+      "children_section": "## 论文",
+      "children_sections": [
+        "## 论文"
+      ],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "paper",
+      "index_columns": [
+        "论文",
+        "年份",
+        "关键词",
+        "简介"
+      ],
+      "status_field": null,
+      "root_dir": "papers"
+    },
+    "partition": {
+      "id": "partition",
+      "description": "论文库里的非方向分区（目前只有 _unfiled 待归档）",
+      "rep": "^【索引】",
+      "children_section": "## 论文",
+      "children_sections": [
+        "## 论文"
+      ],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "paper",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "papers"
+    },
+    "paper": {
+      "id": "paper",
+      "description": "一篇论文（笔记 + PDF 同处一个文件夹）",
+      "rep": null,
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "full",
+      "leaf": true,
+      "naming": "【{year}】{slug}",
+      "naming_fields": [
+        "year",
+        "slug"
+      ],
+      "member_kind": null,
+      "index_columns": [],
+      "status_field": "reading",
+      "root_dir": "papers"
+    },
+    "topic_library": {
+      "id": "topic_library",
+      "description": "深度调研专题总览（deep-research/【索引】深度调研专题总览.md）",
+      "rep": "^【索引】",
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "topic",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "deep-research"
+    },
+    "topic": {
+      "id": "topic",
+      "description": "深度调研专题页（【Deep Research】<topic>.md）",
+      "rep": null,
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "self",
+      "leaf": true,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": null,
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "deep-research"
+    },
+    "idea_library": {
+      "id": "idea_library",
+      "description": "Ideas 入口（ideas/【索引】Ideas.md）",
+      "rep": "^【索引】",
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "idea_package",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "ideas"
+    },
+    "idea_package": {
+      "id": "idea_package",
+      "description": "一个想法/方案包（ideas/<idea>/【索引】<idea> 方案包.md）",
+      "rep": "^【索引】",
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "full",
+      "leaf": false,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": "idea",
+      "index_columns": [],
+      "status_field": null,
+      "root_dir": "ideas"
+    },
+    "idea": {
+      "id": "idea",
+      "description": "想法/方案稿（【idea】<名字>.md）",
+      "rep": null,
+      "children_section": null,
+      "children_sections": [],
+      "default_depth": "self",
+      "leaf": true,
+      "naming": null,
+      "naming_fields": [],
+      "member_kind": null,
+      "index_columns": [],
+      "status_field": "stage",
+      "root_dir": "ideas"
+    }
+  },
+  "detect": [
+    {
+      "kind": "root",
+      "path_regex": "^【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "library",
+      "path_regex": "^papers/【索引】papers\\.md$"
+    },
+    {
+      "kind": "domain",
+      "path_regex": "^papers/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "partition",
+      "path_regex": "^papers/_unfiled/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "direction",
+      "path_regex": "^papers/[^/]+/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "paper",
+      "path_regex": "^papers/[^/]+/【\\d{4}】[^/]+/【\\d{4}】[^/]+\\.md$"
+    },
+    {
+      "kind": "topic_library",
+      "path_regex": "^deep-research/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "topic",
+      "path_regex": "^deep-research/.+/【Deep Research】[^/]+\\.md$"
+    },
+    {
+      "kind": "skill_library",
+      "path_regex": "^skills/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "idea_library",
+      "path_regex": "^ideas/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "idea_package",
+      "path_regex": "^ideas/[^/]+/【索引】[^/]+\\.md$"
+    },
+    {
+      "kind": "idea",
+      "path_regex": "^ideas/.+/【idea】[^/]+\\.md$"
+    }
+  ],
+  "fields": [
+    {
+      "id": "kind",
+      "type": "enum",
+      "values": null,
+      "source": "kinds",
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [],
+      "encode": null,
+      "role": "system",
+      "required": false,
+      "description": "实体类型（缺省时按路径推断）"
+    },
+    {
+      "id": "title",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [],
+      "encode": null,
+      "role": "system",
+      "required": true,
+      "description": ""
+    },
+    {
+      "id": "depth",
+      "type": "enum",
+      "values": [
+        "self",
+        "1",
+        "2",
+        "3",
+        "4",
+        "full"
+      ],
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [],
+      "encode": null,
+      "role": "system",
+      "required": false,
+      "description": "纳管深度（默认取自 kind）"
+    },
+    {
+      "id": "locator",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [],
+      "encode": null,
+      "role": "system",
+      "required": false,
+      "description": "资源定位（file:// / git@ / ssh:// / https://）"
+    },
+    {
+      "id": "parent",
+      "type": "wikilink",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [],
+      "encode": null,
+      "role": "system",
+      "required": false,
+      "description": "显式父实体（优先于小节链接与目录推导）"
+    },
+    {
+      "id": "importance",
+      "type": "int",
+      "values": null,
+      "source": null,
+      "min": 1,
+      "max": 5,
+      "default": 1,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": "radius",
+      "role": null,
+      "required": false,
+      "description": "重要度；画布上球的大小"
+    },
+    {
+      "id": "reading",
+      "type": "enum",
+      "values": [
+        "未读",
+        "在读",
+        "已读",
+        "精读"
+      ],
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": "未读",
+      "applies_to": [
+        "paper"
+      ],
+      "encode": "badge",
+      "role": null,
+      "required": false,
+      "description": "阅读状态；不画在画布上"
+    },
+    {
+      "id": "direction",
+      "type": "wikilink",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": "membership",
+      "required": false,
+      "description": "主方向（必须与所在方向文件夹一致）"
+    },
+    {
+      "id": "sub_directions",
+      "type": "list<wikilink>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": "子方向（可以有多个；跨方向归属声明）"
+    },
+    {
+      "id": "year",
+      "type": "int",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": true,
+      "description": ""
+    },
+    {
+      "id": "slug",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": true,
+      "description": ""
+    },
+    {
+      "id": "pdf",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": true,
+      "description": ""
+    },
+    {
+      "id": "tags",
+      "type": "list<string>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": true,
+      "description": "方法角度标签（受控词表 tools/tag_vocabulary.yml）"
+    },
+    {
+      "id": "table_summary",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": true,
+      "description": "一句话：问题 + 关键方法"
+    },
+    {
+      "id": "authors",
+      "type": "list<string>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "organization",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "arxiv",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "venue",
+      "type": "string",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "doc_type",
+      "type": "enum",
+      "values": [
+        "survey",
+        "tutorial",
+        "technical-report",
+        "benchmark",
+        "empirical-study"
+      ],
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": null,
+      "required": false,
+      "description": "文献体裁（与方向正交）"
+    },
+    {
+      "id": "stage",
+      "type": "enum",
+      "values": [
+        "待做",
+        "在做",
+        "已成稿",
+        "已投稿",
+        "已发表",
+        "废弃"
+      ],
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": "待做",
+      "applies_to": [
+        "idea"
+      ],
+      "encode": "badge",
+      "role": null,
+      "required": false,
+      "description": "想法进度；ideas 专用，不用 reading"
+    },
+    {
+      "id": "extends",
+      "type": "list<wikilink>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": "relation",
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "uses",
+      "type": "list<wikilink>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": "relation",
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "competes",
+      "type": "list<wikilink>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": "relation",
+      "required": false,
+      "description": ""
+    },
+    {
+      "id": "contradicts",
+      "type": "list<wikilink>",
+      "values": null,
+      "source": null,
+      "min": null,
+      "max": null,
+      "default": null,
+      "applies_to": [
+        "paper"
+      ],
+      "encode": null,
+      "role": "relation",
+      "required": false,
+      "description": ""
+    }
+  ],
+  "deprecated": [
+    "contains",
+    "paper_title",
+    "keywords",
+    "BC-folder-note-field"
+  ],
+  "unknown": {
+    "policy": "collect",
+    "promote_hint_after": 3
+  }
+}

@@ -1,0 +1,40 @@
+# Pinakes 论文关系词表
+#
+# 四类关系写入论文 frontmatter，值为 wikilink 数组，例如：
+# uses: ["[[【2023】tiger-semantic-id-generative-retrieval]]"]
+# 目标必须是库中已有的笔记，关系应有原文依据。具体判据见 wiki/AGENTS.md §3.1。
+# extends 与 uses 从改进或使用者指向目标工作；对称关系只写一侧。
+# inverse 描述反向关系，不另行写入笔记。
+#
+# 修改类型时同步 wiki/_schema/fields.yml 和插件的 REL_KEYS、REL_META；
+# 修改颜色、标签或对称性时同步 REL_META，再编译 schema、运行校验与测试。
+# sync-relations 仅更新旧的 Breadcrumbs、Extended Graph 配置，当前 Pinakes 不依赖它。
+
+relations:
+  extends:
+    inverse: extended-by
+    symmetric: false
+    label: extends
+    color: "#56B4E9"
+    desc: 沿目标工作的技术路线继续改进或扩展
+
+  uses:
+    inverse: used-by
+    symmetric: false
+    label: uses
+    color: "#009E73"
+    desc: 复用目标工作的具体模块、损失函数或数据构造
+
+  competes:
+    inverse: competes
+    symmetric: true
+    label: competes
+    color: "#D55E00"
+    desc: 用另一条路线解决同一问题，构成可比较的基线
+
+  contradicts:
+    inverse: contradicts
+    symmetric: true
+    label: contradicts
+    color: "#CC79A7"
+    desc: 在可比较条件下，对同一问题给出相反结论

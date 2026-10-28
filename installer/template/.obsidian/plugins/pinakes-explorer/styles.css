@@ -1,0 +1,701 @@
+/* Pinakes —— 颜色一律走 Obsidian 的 CSS 变量，跟随主题明暗切换。 */
+
+.pnx {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--background-primary);
+}
+
+/* ---------- 顶栏：面包屑 + 控件 ---------- */
+
+.pnx-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex: 0 0 auto;
+  min-height: 34px;
+}
+
+.pnx-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pnx-crumb {
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pnx-crumb:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.pnx-crumb.is-current { color: var(--text-normal); font-weight: var(--font-semibold); cursor: default; }
+.pnx-crumb.is-current:hover { background: none; }
+.pnx-sep { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+
+.pnx-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.pnx-actions select { font-size: var(--font-ui-smaller); }
+
+.pnx-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.pnx-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.pnx-btn.is-on { color: var(--text-accent); }
+.pnx-btn.is-on svg { stroke: var(--text-accent); }
+/* svg 尺寸走 Obsidian 的 --icon-size(clickable-icon 自带),不再写死宽高 */
+
+/* ---------- 主体 ---------- */
+
+.pnx-body { display: flex; flex: 1 1 auto; min-height: 0; }
+
+.pnx-side {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-width: 170px;
+  max-width: 60%;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--background-modifier-border);
+  min-height: 0;
+}
+
+/* 拖这条竖线改树的宽度——原生侧栏就是这个手感 */
+.pnx-grip {
+  flex: 0 0 auto;
+  width: 5px;
+  margin-left: -3px;
+  cursor: col-resize;
+  background: trapnxarent;
+  transition: background-color 120ms ease;
+  z-index: 2;
+}
+.pnx-grip:hover, .pnx-grip.is-dragging { background: var(--interactive-accent); }
+
+.pnx-search { margin: 6px 8px; width: calc(100% - 16px); }
+
+.pnx-tree { flex: 1 1 auto; overflow-y: auto; padding: 0 4px 10px; min-height: 0; }
+
+.pnx-kids { overflow: hidden; }
+
+.pnx-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+  transition: background-color 110ms ease;
+}
+.pnx-row:hover { background: var(--background-modifier-hover); }
+.pnx-row.is-active { background: var(--background-modifier-active-hover); color: var(--text-normal); }
+.pnx-row.is-selected { background: var(--interactive-accent); color: var(--text-on-accent); }
+.pnx-row.is-selected .pnx-count, .pnx-row.is-selected .pnx-twisty { color: var(--text-on-accent); opacity: .8; }
+.pnx-row.is-dim { opacity: .35; }
+
+.pnx-twisty {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+  transition: transform 150ms ease, color 120ms ease;
+}
+.pnx-twisty.is-open { transform: rotate(90deg); }
+.pnx-twisty.is-leaf { visibility: hidden; }
+.pnx-twisty .svg-icon { width: 13px; height: 13px; }
+
+.pnx-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 2px;
+}
+.pnx-dot.is-group { border-radius: 2px; width: 8px; height: 8px; }
+
+.pnx-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pnx-count { flex: 0 0 auto; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+
+/* ---------- 画布 ---------- */
+
+.pnx-stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.pnx-stage canvas { display: block; width: 100%; height: 100%; }
+
+.pnx-legend {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-smaller);
+  max-width: 240px;
+  opacity: .92;
+  transition: opacity 150ms ease;
+}
+.pnx-legend:hover { opacity: 1; }
+
+.pnx-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--text-normal);
+  transition: opacity 120ms ease;
+}
+.pnx-legend-row.is-off { opacity: .4; }
+.pnx-legend-row .pnx-swatch { width: 14px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+.pnx-legend-row .pnx-legend-name { flex: 1 1 auto; }
+.pnx-legend-row .pnx-legend-num { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pnx-legend-sep { height: 1px; background: var(--background-modifier-border); margin: 6px 0; }
+
+.pnx-card {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 290px;
+  max-height: 46%;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-smaller);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.pnx-card.is-shown { opacity: 1; transform: none; pointer-events: auto; }
+.pnx-card h4 { margin: 0 0 4px; font-size: var(--font-ui-small); line-height: 1.35; }
+.pnx-card .pnx-card-sum { color: var(--text-muted); margin: 4px 0 8px; line-height: 1.5; }
+.pnx-card .pnx-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.pnx-card .pnx-card-tag {
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.pnx-card .pnx-card-rel { color: var(--text-muted); line-height: 1.6; }
+.pnx-card .pnx-card-rel b { color: var(--text-normal); font-weight: var(--font-semibold); }
+.pnx-card .pnx-card-acts { display: flex; gap: 6px; margin-top: 8px; }
+.pnx-card button { font-size: var(--font-ui-smaller); padding: 2px 8px; }
+
+.pnx-tip {
+  position: absolute;
+  padding: 5px 8px;
+  max-width: 320px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 3;
+}
+.pnx-tip.is-shown { opacity: 1; }
+
+.pnx-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  text-align: center;
+  padding: 0 40px;
+}
+
+/* ---------- 编辑模式 ---------- */
+
+/* 鼠标位置旁的类型工具栏 */
+.pnx-menu {
+  position: absolute;
+  z-index: 10;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 6px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-smaller);
+}
+.pnx-menu-title {
+  padding: 2px 6px 6px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.pnx-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--text-normal);
+  line-height: 1.4;
+}
+.pnx-menu-row:hover { background: var(--background-modifier-hover); }
+.pnx-menu-row.is-danger { color: var(--text-error); }
+.pnx-menu-swatch { width: 14px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+.pnx-menu-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.pnx-menu-hint { padding: 5px 6px 2px; color: var(--text-faint); line-height: 1.45; }
+.pnx-menu-input {
+  width: 100%;
+  margin-bottom: 5px;
+  font-size: var(--font-ui-smaller);
+}
+.pnx-menu-list { max-height: 260px; overflow-y: auto; }
+
+/* 详情卡里关系条目的删除钮 */
+.pnx-card-del {
+  margin-left: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+}
+.pnx-card-del:hover { color: var(--text-error); }
+
+/* 编辑模式下的画布提示(顶栏下的一条细横幅) */
+.pnx-stage.is-editing::after {
+  content: "编辑模式:点节点连线 · 点边改/删 · Esc 取消";
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 3px 9px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  pointer-events: none;
+}
+
+/* ---------- 阅读状态 / 重要性 打分条 ---------- */
+
+.pnx-card-meta {
+  margin: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pnx-card-row { display: flex; align-items: center; gap: 4px; }
+.pnx-card-key {
+  flex: 0 0 auto;
+  width: 30px;
+  color: var(--text-faint);
+}
+.pnx-chip {
+  padding: 1px 7px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background-color 110ms ease, color 110ms ease, border-color 110ms ease;
+}
+.pnx-chip:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.pnx-chip.is-on {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.pnx-card-authors {
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin: 2px 0 4px;
+}
+.pnx-card-tagwrap { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.pnx-chip-add {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+.pnx-chip-add:hover { color: var(--text-normal); border-style: solid; }
+.pnx-menu-tail { margin-left: auto; color: var(--text-faint); }
+.pnx-menu-row.is-on { background: var(--background-modifier-hover); }
+.pnx-menu-newcolor { gap: 8px; }
+.pnx-menu-newcolor input[type="color"] {
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* 节点颜色选择:色板圆点网格(当前色描圈) */
+.pnx-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 8px;
+}
+.pnx-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.pnx-color-swatch:hover { transform: scale(1.15); }
+.pnx-color-swatch.is-current {
+  box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 3.5px var(--interactive-accent);
+}
+
+/* 字段为空时的芯片:虚线框 = "这里可以填" */
+.pnx-chip.is-todo {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+.pnx-chip.is-todo:hover { border-style: solid; color: var(--text-normal); }
+
+/* 拖动换方向:可接收的容器行高亮 */
+.pnx-row.is-drop {
+  background: var(--background-modifier-active-hover);
+  outline: 1px dashed var(--interactive-accent);
+  outline-offset: -1px;
+}
+.pnx-row[draggable="true"] { cursor: grab; }
+
+/* 画布左下角的状态行:常驻显示上一次操作结果 */
+.pnx-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: 70%;
+  padding: 5px 9px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+  z-index: 4;
+}
+.pnx-status.is-shown { opacity: .95; }
+.pnx-status.is-ok { color: var(--text-success); }
+.pnx-status.is-error { color: var(--text-error); }
+.pnx-status.is-muted { color: var(--text-faint); }   /* 非关键确认:灰,不抢眼 */
+
+/* 子方向芯片:虚线边框,和主方向(实线)区分开 */
+.pnx-card-sub { border-style: dashed; }
+
+/* 树行右侧的状态徽标:阅读状态(状态色文字)+ 重要性(小方框数字) */
+.pnx-badge {
+  flex: 0 0 auto;
+  margin-left: 5px;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pnx-badge.is-dim { opacity: .5; }
+.pnx-badge-imp {
+  min-width: 16px;
+  padding: 0 3px;
+  text-align: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 详情卡:多值组(方向/标签)换行时的排布 ---------- */
+/* 一行里可能有多个芯片会换行:整行顶部对齐,key(方向/标签)与第一排芯片齐平,
+   第二排自然落到下一行 —— 不要垂直居中去"夹"住两排,那样看着最乱。 */
+.pnx-card-row { align-items: flex-start; gap: 6px; }
+.pnx-card-key { margin-top: 3px; line-height: 1.5; }
+.pnx-card-meta { gap: 6px; }
+.pnx-card-tagwrap { gap: 6px; }
+.pnx-chip { padding: 2px 8px; line-height: 1.5; }
+.pnx-card .pnx-card-tag { padding: 1px 7px; line-height: 1.5; }
+.pnx-card-tag { cursor: pointer; }
+
+/* 芯片永不被压缩、也不在内部断行 —— 窄卡片/不同缩放下的变形都源于这两条 */
+.pnx-chip, .pnx-card-tag {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* 换行容器铺满剩余宽度,芯片超了就换到下一排 */
+.pnx-card-tagwrap { min-width: 0; }
+
+/* ---------- 详情卡:可拖尺寸 + 动作按钮 ---------- */
+/* 外壳不滚、内层滚:手柄固定在卡片角上,不会跟着内容滚走 */
+.pnx-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 240px;
+  min-height: 160px;
+}
+.pnx-card-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+.pnx-card-grip {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  color: var(--text-faint);
+  opacity: .35;
+  transition: opacity 120ms ease;
+  /* 两道斜线的"可拉伸"记号,不引图片 */
+  background:
+    linear-gradient(135deg,
+      trapnxarent 0 45%, currentColor 45% 60%,
+      trapnxarent 60% 72%, currentColor 72% 87%, trapnxarent 87%);
+}
+.pnx-card-grip:hover { opacity: .85; }
+
+/* 动作区:与上面的芯片分开 —— 分隔线 + 真按钮样式 + 悬停反馈 */
+.pnx-card-acts {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.pnx-card-acts button {
+  padding: 3px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.pnx-card-acts button:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+}
+.pnx-card-acts button:active { box-shadow: none; transform: translateY(1px); }
+.pnx-card-acts button.is-primary {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.pnx-card-acts button.is-primary:hover {
+  background: var(--interactive-accent-hover);
+  border-color: var(--interactive-accent-hover);
+}
+
+/* 详情卡顶部拖动条:像窗口标题栏 */
+.pnx-card-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px -4px 6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  cursor: grab;
+  user-select: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.pnx-card-head:hover { background: var(--background-modifier-hover); color: var(--text-muted); }
+.pnx-card-head.is-dragging { cursor: grabbing; background: var(--background-modifier-active-hover); }
+.pnx-card-grip-dots { font-size: var(--font-ui-small); line-height: 1; letter-spacing: 1px; }
+.pnx-card-head-hint { margin-left: auto; font-size: var(--font-ui-smaller); opacity: .8; }
+
+/* ---------- 右键新建:PromptModal 输入框 ---------- */
+.pnx-prompt-input {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.pnx-prompt-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ---------- 树节点右键菜单:图标 / 分隔线 ---------- */
+.pnx-menu-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  color: var(--text-muted);
+}
+.pnx-menu-icon .svg-icon { width: 14px; height: 14px; }
+.pnx-menu-row.is-danger .pnx-menu-icon { color: var(--text-error); }
+.pnx-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--background-modifier-border);
+}
+
+/* ---------- 添加论文弹窗 ---------- */
+.pnx-add-paper { min-width: 520px; }
+.pnx-add-paper h3 { margin-top: 0; }
+.pnx-form-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.pnx-form-key {
+  flex: 0 0 52px;
+  padding-top: 5px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: right;
+}
+.pnx-form-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pnx-form-textarea {
+  min-height: 64px;
+  resize: vertical;
+  font-family: inherit;
+}
+.pnx-form-file { flex: 1 1 auto; }
+.pnx-form-hint {
+  flex: 1 1 auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  word-break: break-all;
+}
+.pnx-form-error {
+  min-height: 18px;
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+.pnx-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ---------- describe 弹窗 ---------- */
+.pnx-describe {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  white-space: pre;
+}
+
+/* ---------- 边界节点（depth != full：内部自由管理） ---------- */
+.pnx-boundary-badge {
+  opacity: .75;
+  font-size: 10px;
+}
+.pnx-boundary-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.pnx-card-mini {
+  margin-left: 6px;
+  padding: 1px 8px;
+  font-size: var(--font-ui-smaller);
+}
+
+/* ---------- 资源不可达 ---------- */
+.pnx-badge-error { color: var(--text-error); font-weight: 600; }
+.pnx-boundary-note.is-error { color: var(--text-error); }
+.pnx-resource-list { max-height: 50vh; overflow: auto; margin: 8px 0; }
+.pnx-resource-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.pnx-resource-row.is-error { color: var(--text-error); }
+.pnx-resource-why { color: var(--text-muted); font-size: var(--font-ui-smaller); word-break: break-all; }
+
+/* ---------- 欢迎页(首次运行 / 命令面板「欢迎与功能介绍」) ---------- */
+.pnx-welcome { max-width: 560px; }
+.pnx-welcome-lead {
+  margin: 4px 0 14px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  font-size: var(--font-ui-medium);
+}
+.pnx-welcome-feats { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.pnx-welcome-feat { display: flex; gap: 10px; align-items: flex-start; }
+.pnx-welcome-icon {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--interactive-accent);
+}
+.pnx-welcome-icon .svg-icon { width: 15px; height: 15px; }
+.pnx-welcome-desc { color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; }
+.pnx-welcome-steps {
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  margin-bottom: 14px;
+}
+.pnx-welcome-steps ol { margin: 6px 0 0; padding-left: 20px; }
+.pnx-welcome-steps li { margin: 3px 0; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.pnx-welcome-acts { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* 添加论文弹窗的「先不选 PDF」跳过链接 */
+.pnx-form-skip { margin-left: 10px; font-size: var(--font-ui-smaller); cursor: pointer; }
+.pnx-welcome-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+}

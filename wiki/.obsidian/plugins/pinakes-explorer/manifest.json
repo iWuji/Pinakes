@@ -1,0 +1,9 @@
+{
+  "id": "pinakes-explorer",
+  "name": "Pinakes",
+  "version": "1.0.0",
+  "minAppVersion": "1.7.0",
+  "description": "按本库自己的层级逐层进入的关系图谱:左边一棵可点开的树,右边画选中节点及其子树的有类型关系图(力导向、可拖拽缩放),详情卡里「进入」下一层、「回到上层」返回。",
+  "author": "Pinakes",
+  "isDesktopOnly": true
+}

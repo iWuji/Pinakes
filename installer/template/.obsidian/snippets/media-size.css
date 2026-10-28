@@ -1,0 +1,7 @@
+/* 笔记里粘贴的位图图片默认不超过 480px 宽，想更大就单独加 |宽 覆盖。
+   只作用于普通 img，不影响 PDF 内嵌（那是 iframe/canvas）。 */
+.markdown-reading-view img:not(.emoji),
+.markdown-source-view.mod-cm6 .cm-content img:not(.emoji) {
+  max-width: min(100%, 480px);
+  height: auto;
+}

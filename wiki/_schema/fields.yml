@@ -1,0 +1,138 @@
+# Pinakes 字段注册表（权威）
+#
+# 这是 facet 的唯一真源。`tools/schema.py` 会把它编译成 `_schema/.compiled.json`。
+# 未注册字段**不报错**：lint 只统计使用次数，达到阈值提示「可晋升为 facet」
+# （见 Pinakes/ENTITY_MODEL.md §6）。改完跑：
+#   python3 tools/pinakes.py schema --apply
+
+schema_version: 1
+
+# 未注册字段的策略
+unknown:
+  policy: collect          # collect = 静默收集,只提示;strict = 报错(不建议)
+  promote_hint_after: 3    # 同一字段在 >= N 篇里出现 → warn 提示晋升
+
+fields:
+
+  # ---------- 系统字段 ----------
+  - id: kind
+    type: enum
+    source: kinds
+    role: system
+    description: 实体类型（缺省时按路径推断）
+  - id: title
+    type: string
+    role: system
+    required: true
+  - id: depth
+    type: enum
+    values: [self, "1", "2", "3", "4", full]
+    role: system
+    description: 纳管深度（默认取自 kind）
+  - id: locator
+    type: string
+    role: system
+    description: 资源定位（file:// / git@ / ssh:// / https://）
+  - id: parent
+    type: wikilink
+    role: system
+    description: 显式父实体（优先于小节链接与目录推导）
+
+  # ---------- 论文（paper）----------
+  - id: importance
+    type: int
+    min: 1
+    max: 5
+    applies_to: [paper]
+    encode: radius
+    default: 1
+    description: 重要度；画布上球的大小
+  - id: reading
+    type: enum
+    values: [未读, 在读, 已读, 精读]
+    applies_to: [paper]
+    encode: badge
+    default: 未读
+    description: 阅读状态；不画在画布上
+  - id: direction
+    type: wikilink
+    applies_to: [paper]
+    role: membership
+    description: 主方向（必须与所在方向文件夹一致）
+  - id: sub_directions
+    type: list<wikilink>
+    applies_to: [paper]
+    description: 子方向（可以有多个；跨方向归属声明）
+  - id: year
+    type: int
+    applies_to: [paper]
+    required: true
+  - id: slug
+    type: string
+    applies_to: [paper]
+    required: true
+  - id: pdf
+    type: string
+    applies_to: [paper]
+    required: true
+  - id: tags
+    type: list<string>
+    applies_to: [paper]
+    required: true
+    description: 方法角度标签（受控词表 tools/tag_vocabulary.yml）
+  - id: table_summary
+    type: string
+    applies_to: [paper]
+    required: true
+    description: 一句话：问题 + 关键方法
+  - id: authors
+    type: list<string>
+    applies_to: [paper]
+  - id: organization
+    type: string
+    applies_to: [paper]
+  - id: arxiv
+    type: string
+    applies_to: [paper]
+  - id: venue
+    type: string
+    applies_to: [paper]
+  - id: doc_type
+    type: enum
+    values: [survey, tutorial, technical-report, benchmark, empirical-study]
+    applies_to: [paper]
+    description: 文献体裁（与方向正交）
+
+  # ---------- 想法（idea）----------
+  - id: stage
+    type: enum
+    values: [待做, 在做, 已成稿, 已投稿, 已发表, 废弃]
+    applies_to: [idea]
+    encode: badge
+    default: 待做
+    description: 想法进度；ideas 专用，不用 reading
+
+  # ---------- 关系（权威词表在 tools/relation_vocabulary.yml）----------
+  - id: extends
+    type: list<wikilink>
+    applies_to: [paper]
+    role: relation
+  - id: uses
+    type: list<wikilink>
+    applies_to: [paper]
+    role: relation
+  - id: competes
+    type: list<wikilink>
+    applies_to: [paper]
+    role: relation
+  - id: contradicts
+    type: list<wikilink>
+    applies_to: [paper]
+    role: relation
+
+# 旧字段：不再读取，但迁移期不报错（出现时给一次提示）
+deprecated:
+  - contains
+  - paper_title
+  - keywords
+  - BC-folder-note-field

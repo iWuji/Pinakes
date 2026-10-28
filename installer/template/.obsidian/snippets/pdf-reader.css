@@ -1,0 +1,12 @@
+/* 顶部整页 PDF 内嵌当阅读器用：仅当该内嵌没有手动指定高度时才铺满视口。
+   想要小尺寸的内嵌，在链接后加 |宽x高（例如 |400x300），即可绕过本规则。 */
+.pdf-embed:not([style*="height"]) {
+  height: 85vh !important;
+}
+.pdf-embed:not([style*="height"]) > div,
+.pdf-embed:not([style*="height"]) .pdf-container,
+.pdf-embed:not([style*="height"]) .pdf-viewer-container,
+.pdf-embed:not([style*="height"]) iframe {
+  height: 100% !important;
+  min-height: 85vh !important;
+}

@@ -1,0 +1,31 @@
+name: Draft plugin release
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npm test
+      - run: python -m pip install -r requirements.txt
+      - run: python tools/lint.py --wiki-dir wiki/
+      - name: Package optional research vault installer
+        run: python tools/make_installer.py
+      - name: Create draft with standard plugin assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes main.js manifest.json styles.css dist/Pinakes-Installer.zip

@@ -1,0 +1,10 @@
+{
+  "id": "pinakes-explorer",
+  "name": "Pinakes",
+  "version": "0.0.0",
+  "minAppVersion": "1.7.0",
+  "description": "Organize research papers with a hierarchical tree, an interactive relationship graph, and editable reading metadata.",
+  "author": "Pinakes",
+  "isDesktopOnly": true,
+  "authorUrl": "https://github.com/iWuji"
+}

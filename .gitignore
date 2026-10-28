@@ -1,0 +1,42 @@
+# ===== 个人内容一律不入库(只提交项目部分:工具 / 模板 / 规范 / 骨架配置)=====
+
+# 原始论文 / 网页来源(整个目录)
+raw/
+
+# 论文库内容:方向文件夹里的笔记与 PDF(439 篇,~1.1GB)。
+# papers/ 顶层的域索引笔记(【索引】<域>.md)是骨架,保留。
+wiki/papers/*/
+!wiki/papers/_unfiled/
+wiki/papers/_unfiled/*
+!wiki/papers/_unfiled/【索引】_unfiled.md
+
+# 专题调研与想法的正文(个人内容;目录结构已在 template/ 里)
+wiki/deep-research/*/
+wiki/deep-research/*.md
+wiki/ideas/*/
+wiki/ideas/*.md
+
+# 变更日志(个人工作记录;仓库级与 wiki 级都不入库)
+log.md
+wiki/log.md
+
+# 通用忽略
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Obsidian: 提交插件代码与配置(方便换机复现),只忽略易变的本机状态
+wiki/.obsidian/workspace.json
+wiki/.obsidian/workspace-mobile.json
+wiki/.obsidian/plugins/*/data.json.bak
+installer/template/.obsidian/workspace.json
+installer/template/.obsidian/workspace-mobile.json
+installer/template/.obsidian/plugins/*/data.json.bak
+
+# 安装包构建产物(发布到 GitHub Releases,不入库)
+dist/
+
+# Plugin build output and development dependencies
+/main.js
+/node_modules/

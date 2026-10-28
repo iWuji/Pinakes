@@ -1,0 +1,14 @@
+{
+  "types": {
+    "aliases": "aliases",
+    "competes": "multitext",
+    "contains": "multitext",
+    "contradicts": "multitext",
+    "cssclasses": "multitext",
+    "extends": "multitext",
+    "importance": "number",
+    "indexed-by": "multitext",
+    "reading": "text",
+    "tags": "tags"
+  }
+}
