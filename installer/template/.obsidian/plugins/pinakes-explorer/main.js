@@ -1540,10 +1540,45 @@ function createPlugin(obsidian) {
       // ---- 左树 ----
       const body = root.createDiv({ cls: "pnx-body" });
       const side = body.createDiv({ cls: "pnx-side" });
-      this.searchEl = side.createEl("input", { cls: "pnx-search", type: "search", placeholder: "搜索标题 / slug…" });
+      this.searchEl = side.createEl("input", { cls: "pnx-search", type: "search", placeholder: "搜索标题 / slug…(回车跳转)" });
+      // 回车跳转:每次回车按树序跳到下一个匹配(到尾回环);Esc 清空。
+      // 匹配口径与 renderTree 的 matches() 一致(title / slug / tags)。
+      this.searchHits = [];
+      this.searchCursor = -1;
+      const collectHits = () => {
+        const q = this.searchQ.trim().toLowerCase();
+        this.searchHits = [];
+        this.searchCursor = -1;
+        if (!q || !this.index || !this.index.root) return;
+        const hit = (n) => n.basename.toLowerCase().includes(q) || n.title.toLowerCase().includes(q) ||
+          (n.tags || []).some((t) => t.toLowerCase().includes(q));
+        (function walk(n) {
+          if (hit(n)) this.searchHits.push(n.path);
+          for (const c of n.children) {
+            const cn = this.index.nodes.get(c);
+            if (cn) walk.call(this, cn);
+          }
+        }).call(this, this.index.root);
+      };
       this.searchEl.addEventListener("input", () => {
         this.searchQ = this.searchEl.value;
+        collectHits();               // 词一变,游标重置;回车从头开始
         this.renderTree();
+      });
+      this.searchEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!this.searchHits.length) return;
+          this.searchCursor = (this.searchCursor + 1) % this.searchHits.length;
+          this.selectNode(this.searchHits[this.searchCursor]);   // 展开祖先 + 平移进视口
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          this.searchEl.value = "";
+          this.searchQ = "";
+          collectHits();
+          this.renderTree();
+          this.searchEl.blur();
+        }
       });
       this.treeEl = side.createDiv({ cls: "pnx-tree" });
 

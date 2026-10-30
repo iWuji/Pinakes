@@ -1392,6 +1392,19 @@ console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
     })());
 }
 
+console.log("\n== 搜索框回车跳转 ==");
+{
+  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  check("Enter 按树序跳下一个匹配(到尾回环)",
+    /this\.searchCursor \+ 1\) % this\.searchHits\.length/.test(src) &&
+    /this\.selectNode\(this\.searchHits\[this\.searchCursor\]\)/.test(src));
+  check("匹配口径与树一致(title/slug/tags),按树序先序收集",
+    /\)\.call\(this, this\.index\.root\)/.test(src) &&
+    /n\.basename\.toLowerCase\(\)\.includes\(q\) \|\| n\.title\.toLowerCase\(\)\.includes\(q\)/.test(src));
+  check("Esc 清空搜索并 blur", /e\.key === "Escape"/.test(src) && /searchEl\.blur\(\)/.test(src));
+  check("词变化时游标重置(回车从头开始)", /collectHits\(\);\s*\/\/ 词一变,游标重置/.test(src));
+}
+
 console.log("\n== 提示条自动熄灭 ==");
 {
   const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
