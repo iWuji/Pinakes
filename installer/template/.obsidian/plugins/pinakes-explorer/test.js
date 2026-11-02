@@ -1392,6 +1392,30 @@ console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
     })());
 }
 
+console.log("\n== 检查更新(版本比较 + 依赖清单同步)==");
+{
+  check("cmpVersion 语义比较:补零/前导 v/相等",
+    data.cmpVersion("0.5.68", "0.6.0") === -1 &&
+    data.cmpVersion("1.14.1", "1.14") === 1 &&
+    data.cmpVersion("2.25.1", "2.25.1") === 0 &&
+    data.cmpVersion("0.40.31", "0.40.9") === 1);   // 数值比较:31 > 9(不是字符串序)
+  check("normalizeTag 剥前导 v", data.normalizeTag("v1.14.1") === "1.14.1" && data.normalizeTag("0.5.68") === "0.5.68");
+  check("依赖清单 8 项,目录唯一,与 docs/plugins.md 同步",
+    data.UPDATABLE_PLUGINS.length === 8 &&
+    new Set(data.UPDATABLE_PLUGINS.map((p) => p.dir)).size === 8 &&
+    data.UPDATABLE_PLUGINS.every((p) => /^[\w.-]+\/[\w.-]+$/.test(p.repo)),
+    JSON.stringify(data.UPDATABLE_PLUGINS.map((p) => p.dir)));
+  // 与 docs/plugins.md 里的 repo 链接逐个对账(文档是清单的另一份副本)
+  const docsMd = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "docs", "plugins.md"), "utf8");
+  const missing = data.UPDATABLE_PLUGINS.filter((p) => !docsMd.includes(`github.com/${p.repo}`));
+  check("清单里的每个 repo 都在 docs/plugins.md 有链接", missing.length === 0,
+    JSON.stringify(missing.map((p) => p.repo)));
+  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  check("命令与设置入口 + UpdateModal(勾选更新/Pinakes 只给 Releases 链接)",
+    /id: "check-updates"/.test(src) && /class UpdateModal extends Modal/.test(src) &&
+    /前往 Releases/.test(src) && /writeBinary/.test(src));
+}
+
 console.log("\n== 搜索框回车跳转 ==");
 {
   const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");

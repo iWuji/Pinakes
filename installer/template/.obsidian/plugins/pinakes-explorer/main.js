@@ -388,6 +388,36 @@ function rootDirsOf(schema) {
 // 待归档分区(`papers/_unfiled/`):论文库里唯一的非方向分区,与方向**互斥**。
 // 它可以是论文的主方向(整篇放进去等待定方向),但绝不能被选成子方向。
 const UNFILED_DIR = "_unfiled";
+
+// ── 依赖插件清单(检查更新用):dir = installer/template 下的目录名,repo = 上游 GitHub ──
+// 与 docs/plugins.md 的清单保持一致 —— 改插件清单时两处同步(test.js 有断言盯着)。
+const UPDATABLE_PLUGINS = [
+  { dir: "dataview", repo: "blacksmithgu/obsidian-dataview" },
+  { dir: "templater-obsidian", repo: "silentvoid13/Templater" },
+  { dir: "quickadd", repo: "chhoumann/quickadd" },
+  { dir: "pdf-plus", repo: "ryotaushio/obsidian-pdf-plus" },
+  { dir: "omnisearch", repo: "scambier/obsidian-omnisearch" },
+  { dir: "obsidian-front-matter-title-plugin", repo: "snezhig/obsidian-front-matter-title" },
+  { dir: "obsidian-latex-suite", repo: "artisticat1/obsidian-latex-suite" },
+  { dir: "table-editor-obsidian", repo: "tgrosinger/advanced-tables-obsidian" },
+];
+const SELF_REPO = "iWuji/Pinakes";
+
+/** semver 比较:按 '.' 分段转数字,段数不齐补 0。返回 -1/0/1。 */
+function cmpVersion(a, b) {
+  const pa = String(a || "").split("."), pb = String(b || "").split(".");
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const x = parseInt(pa[i] || "0", 10) || 0;
+    const y = parseInt(pb[i] || "0", 10) || 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+/** Release tag → 版本号:剥前导 v(容忍 "v1.14.1" / "1.14.1" 两种习惯)。 */
+function normalizeTag(tag) {
+  return String(tag || "").trim().replace(/^v/i, "");
+}
 const UNFILED_INDEX_BASENAME = "【索引】" + UNFILED_DIR;
 
 // 「列子节点」的小节名:域索引笔记用 `## 方向` 列方向,根笔记用 `## 大类别` 列域,
@@ -3429,6 +3459,97 @@ function createPlugin(obsidian) {
       modal.open();
     }
 
+    /* ---------- 检查更新(Pinakes 自身 + 依赖插件) ---------- */
+
+    /** 读本地插件的 manifest 版本(读不到返回 null)。 */
+    async localPluginVersion(dir) {
+      try {
+        const raw = await this.app.vault.adapter.read(
+          `${this.app.vault.configDir}/plugins/${dir}/manifest.json`);
+        return JSON.parse(raw).version || null;
+      } catch (e) { return null; }
+    }
+
+    /** GitHub releases/latest 的 {tag, assets, htmlUrl};失败返回 {error}。 */
+    async fetchLatestRelease(repo) {
+      try {
+        const res = await requestUrl({
+          url: `https://api.github.com/repos/${repo}/releases/latest`,
+          headers: { "User-Agent": "Pinakes-Update-Check" },
+          throw: false,
+        });
+        if (res.status !== 200) return { error: `HTTP ${res.status}` };
+        const j = JSON.parse(res.text || "{}");
+        return {
+          tag: normalizeTag(j.tag_name),
+          assets: (j.assets || []).map((a) => a.name),
+          htmlUrl: j.html_url || `https://github.com/${repo}/releases`,
+        };
+      } catch (e) { return { error: e.message || "network" }; }
+    }
+
+    /** 汇总检查结果:自身 + 每个依赖 {name, dir, repo, local, remote, error, outdated}。 */
+    async checkUpdates() {
+      new Notice("正在检查更新…");
+      const selfManifest = JSON.parse(await this.app.vault.adapter.read(
+        `${this.app.vault.configDir}/plugins/pinakes-explorer/manifest.json`));
+      const items = await Promise.allSettled([
+        (async () => {
+          const r = await this.fetchLatestRelease(SELF_REPO);
+          return { name: "Pinakes(本项目)", dir: "pinakes-explorer", repo: SELF_REPO,
+            local: selfManifest.version, ...r };
+        })(),
+        ...UPDATABLE_PLUGINS.map(async (p) => ({
+          ...p, name: p.dir,
+          local: await this.localPluginVersion(p.dir),
+          ...(await this.fetchLatestRelease(p.repo)),
+        })),
+      ]).then((rs) => rs.map((r) => (r.status === "fulfilled" ? r.value : { error: r.reason?.message || "failed" })));
+      for (const it of items) {
+        it.outdated = !it.error && it.local && it.tag && cmpVersion(it.local, it.tag) < 0;
+      }
+      new UpdateModal(this.app, items, (dir, repo) => this.updatePlugin(dir, repo)).open();
+    }
+
+    /** 更新一个依赖插件:从它的 latest release 下载 main.js/manifest.json/styles.css
+     *  覆盖本地(没有的附件跳过;data.json 不在 release 里,天然不会被动到)。 */
+    async updatePlugin(dir, repo) {
+      const base = `${this.app.vault.configDir}/plugins/${dir}`;
+      const rel = await this.fetchLatestRelease(repo);
+      if (rel.error) { new Notice(`更新 ${dir} 失败:${rel.error}`); return false; }
+      // 新版要求的 Obsidian 版本高于当前时,不更新(装上也加载不了)
+      try {
+        const mres = await requestUrl({
+          url: `https://raw.githubusercontent.com/${repo}/${rel.tag}/manifest.json`,
+          headers: { "User-Agent": "Pinakes-Update" }, throw: false,
+        });
+        if (mres.status === 200) {
+          const minApp = JSON.parse(mres.text).minAppVersion || "0.0.0";
+          const cur = (window.electron?.remoteApp || {}).version || "";   // 取不到就不拦
+          if (cur && cmpVersion(cur, minApp) < 0) {
+            new Notice(`跳过 ${dir}:新版要求 Obsidian ${minApp},当前 ${cur}`); return false;
+          }
+        }
+      } catch (e) { /* 拿不到 manifest 就不做版本闸 */ }
+      let updated = 0;
+      for (const f of ["main.js", "manifest.json", "styles.css"]) {
+        if (!rel.assets.includes(f)) continue;   // 有的插件没有 styles.css
+        try {
+          const res = await requestUrl({
+            url: `https://raw.githubusercontent.com/${repo}/${rel.tag}/${f}`,
+            headers: { "User-Agent": "Pinakes-Update" }, throw: false,
+          });
+          if (res.status !== 200) continue;
+          await this.app.vault.adapter.writeBinary(
+            `${base}/${f}`, res.arrayBuffer);
+          updated++;
+        } catch (e) { console.error(`Pinakes: 更新 ${dir}/${f} 失败`, e); }
+      }
+      if (updated) new Notice(`✓ ${dir} 已更新到 ${rel.tag}`);
+      else new Notice(`${dir} 没有可更新的文件`);
+      return updated > 0;
+    }
+
     /** 可选方向列表:第一个固定是 `_unfiled`(默认),其余按域/方向名排序。
      *  只收 papers/ 下真正的方向索引(排除域索引与 papers 容器)。 */
     directionOptions() {
@@ -4930,6 +5051,13 @@ function createPlugin(obsidian) {
           b.setText("显示欢迎页");
           b.onClick(() => this.plugin.showWelcome());
         });
+    new Setting(containerEl)
+        .setName("检查更新")
+        .setDesc("比对 GitHub 最新 Release:Pinakes 与全部依赖插件,过时的可一键更新")
+        .addButton((b) => {
+          b.setText("检查更新");
+          b.onClick(() => this.plugin.checkUpdates());
+        });
     }
   }
 
@@ -4986,6 +5114,12 @@ function createPlugin(obsidian) {
         id: "open-welcome",
         name: "欢迎与功能介绍",
         callback: () => this.showWelcome(),
+      });
+      // 检查更新:Pinakes 自身 + 全部依赖插件,过时的依赖可勾选一键更新
+      this.addCommand({
+        id: "check-updates",
+        name: "检查更新(Pinakes 与依赖插件)",
+        callback: () => this.checkUpdates(),
       });
       // 笔记侧的"选择题":属性面板只能打字,这里给真正的候选列表(对当前打开的笔记生效)。
       // 轴按 schema 的 status_field 自动切换:论文出「阅读状态」,想法出「阶段」——
@@ -5089,6 +5223,73 @@ function createPlugin(obsidian) {
   }
 
   /** 欢迎页(纯 DOM,风格与详情卡/菜单同一套变量)。功能介绍 + 三步上手 + 主行动按钮。 */
+  /** 检查更新结果弹窗:每行 本地版本 → 远端版本 / 已是最新 / 检查失败。
+   *  过时的依赖插件带勾选框,「更新所选」逐个下载覆盖;Pinakes 自身只给 Releases 链接
+   *  (插件运行中不能安全替换自己的 main.js)。 */
+  class UpdateModal extends Modal {
+    constructor(app, items, onUpdate) {
+      super(app);
+      this.items = items;
+      this.onUpdate = onUpdate;
+    }
+    onOpen() {
+      const { contentEl } = this;
+      contentEl.addClass("pnx-update");
+      contentEl.createEl("h3").setText("检查更新");
+      const boxes = new Map();
+      let outdated = 0;
+      const list = contentEl.createDiv({ cls: "pnx-update-list" });
+      for (const it of this.items) {
+        const row = list.createDiv({ cls: "pnx-update-row" });
+        const name = row.createDiv({ cls: "pnx-update-name" });
+        if (it.error || !it.outdated) {
+          name.createSpan({ text: it.name });
+        } else {
+          const cb = name.createEl("label");
+          const box = cb.createEl("input", { type: "checkbox" });
+          box.checked = true;
+          cb.createSpan({ text: " " + it.name });
+          boxes.set(it.dir, box);
+          outdated++;
+        }
+        const ver = row.createDiv({ cls: "pnx-update-ver" });
+        if (it.error) ver.setText(`⚠ 检查失败(${it.error})`);
+        else if (!it.local) ver.setText(`本地未安装 → ${it.tag || "?"}`);
+        else if (!it.tag) ver.setText(`${it.local}(远端信息缺失)`);
+        else if (it.outdated) ver.setText(`${it.local} → ${it.tag}`);
+        else ver.setText(`${it.local} ✓ 已是最新`);
+      }
+      const acts = contentEl.createDiv({ cls: "pnx-form-actions" });
+      if (outdated) {
+        const selfItem = this.items.find((x) => x.dir === "pinakes-explorer" && x.outdated);
+        if (selfItem) {
+          const selfBtn = acts.createEl("button");
+          selfBtn.setText(`Pinakes 有新版 ${selfItem.tag} — 前往 Releases`);
+          selfBtn.addEventListener("click", () => window.open(selfItem.htmlUrl, "_blank"));
+        }
+        const ok = acts.createEl("button", { cls: "mod-cta" });
+        ok.setText(`更新所选(${outdated} 个)`);
+        ok.addEventListener("click", async () => {
+          const picked = [...boxes.entries()].filter(([, b]) => b.checked);
+          if (!picked.length) return;
+          ok.disabled = true;
+          ok.setText("更新中…");
+          let done = 0;
+          for (const [dir] of picked) {
+            const it = this.items.find((x) => x.dir === dir);
+            if (await this.onUpdate(dir, it.repo)) done++;
+          }
+          ok.setText(`完成:${done} 个已更新`);
+          new Notice(`完成:${done} 个插件已更新 —— 重启 Obsidian 后生效`);
+        });
+      }
+      const close = acts.createEl("button");
+      close.setText("关闭");
+      close.addEventListener("click", () => this.close());
+    }
+    onClose() { this.contentEl.empty(); }
+  }
+
   class WelcomeModal extends Modal {
     constructor(app, { onDone, onFirstPaper, isFresh }) {
       super(app);
@@ -5172,6 +5373,7 @@ if (obsidian) {
     parseFrontmatter, extractWikilinks, patchRelation, readRelation, patchScalarField, bodyNoteLinks,
     buildWikiIndex, computeSubGraph, buildIndexSection, sectionNoteLinks,
     DEFAULT_SCHEMA, kindOfPath, sectionsForKind, statusFieldOf, rootDirOf, rootDirsOf, adapters,
+    UPDATABLE_PLUGINS, SELF_REPO, cmpVersion, normalizeTag,
     splitFrontmatter, groupFields,
     posixDirname, baseName, dirOf, rgbIntToHex, truncate,
   };

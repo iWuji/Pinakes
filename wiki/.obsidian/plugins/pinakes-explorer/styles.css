@@ -699,3 +699,17 @@
   font-size: var(--font-ui-smaller);
   line-height: 1.5;
 }
+
+/* ---------- 检查更新弹窗 ---------- */
+.pnx-update-list { max-height: 55vh; overflow: auto; margin: 8px 0 12px; }
+.pnx-update-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.pnx-update-name { display: flex; align-items: center; gap: 4px; }
+.pnx-update-name input[type="checkbox"] { margin: 0; }
+.pnx-update-ver { color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; }
