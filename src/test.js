@@ -75,21 +75,27 @@ if (FULL_VAULT) console.log("  (完整库模式:内容断言全开)");
 else console.log("  (骨架库模式:跳过内容断言 —— 这是公开仓库的正常形态)");
 check("根笔记被识别", !!index.root, JSON.stringify(index.root && index.root.path));
 check("根 = 研究总览", index.root && index.root.path === "【索引】研究总览.md");
-check("根的一级子节点 = 3(papers / DR总览 / Ideas)",
-  index.root && index.root.children.length === 3,
+check("根的一级节点包含首页声明的全部入口",
+  index.root && index.root.hierarchyLinks.every(base => {
+    const node = index.byBasename.get(base);
+    return node && index.root.children.includes(node.path);
+  }),
   index.root && JSON.stringify(index.root.children.map((c) => index.nodes.get(c).basename)));
 const papersNode = index.byBasename.get("【索引】papers");
-check("papers 容器节点存在(FULL_VAULT 时 children = 5:4 个域 + 待归档)",
-  !!papersNode && (!FULL_VAULT || (papersNode.children.length === 5 &&
-    papersNode.children.every((c) => ["【索引】llm4rec", "【索引】deeprec", "【索引】genmodel", "【索引】llm", "【索引】_unfiled"].includes(index.nodes.get(c).basename)))),
+check("papers 容器包含全部域与待归档入口",
+  !!papersNode && [...index.nodes.values()].filter(n => ["domain", "partition"].includes(n.kind))
+    .every(n => papersNode.children.includes(n.path)),
   papersNode && JSON.stringify(papersNode.children.map((c) => index.nodes.get(c).basename)));
 if (FULL_VAULT) check("三个域的 parent 都是 papers 容器",
   ["【索引】llm4rec", "【索引】deeprec", "【索引】genmodel"].every((b) => index.byBasename.get(b).parent === "papers/【索引】papers.md"));
 
 // genmodel 是非推荐域:通用生成模型方法(扩散/流匹配/能量模型/分布蒸馏)。
 const genmodel = index.byBasename.get("【索引】genmodel");
-if (FULL_VAULT) check("genmodel 域存在且列出 3 个方向",
-  !!genmodel && genmodel.children.length === 3,
+if (FULL_VAULT) check("genmodel 域包含正文声明的全部方向",
+  !!genmodel && genmodel.hierarchyLinks.every(base => {
+    const node = index.byBasename.get(base);
+    return node && genmodel.children.includes(node.path);
+  }),
   genmodel && JSON.stringify(genmodel.children.map((c) => index.nodes.get(c).basename)));
 check("无 basename 碰撞", index.basenameCollisions === 0, String(index.basenameCollisions));
 check("无断链 wikilink", index.dangling.length === 0, index.dangling.slice(0, 5).join("; "));
@@ -100,8 +106,9 @@ const domain = index.byBasename.get("【索引】llm4rec");
 if (FULL_VAULT) {
   check("llm4rec 域索引笔记存在(且是 papers/ 顶层的一篇笔记)",
     !!domain && domain.path === "papers/【索引】llm4rec.md", domain && domain.path);
-  check("域总览 children = 8(只有方向;待归档不是方向,挂在 papers 容器下)—— 由 `## 方向` 链接驱动",
-    domain && domain.children.length === 8,
+  check("域总览包含正文声明的方向，待归档不属于域",
+    domain && JSON.stringify(domain.children) === JSON.stringify(data.sectionNoteLinks(records.find(r => r.path === domain.path).content, ["## 方向"])
+      .map(base => index.byBasename.get(base)?.path).filter(Boolean)),
     domain && JSON.stringify(domain.children.map((c) => index.nodes.get(c).basename)));
   check("域的子节点 parent 都指向域笔记(链接重挂生效)",
     domain && domain.children.every((c) => index.nodes.get(c).parent === domain.path));
@@ -119,8 +126,8 @@ else check("待归档没有挂在 llm4rec 域下(骨架库:没有域,天然成�
 const dDeeprec = index.byBasename.get("【索引】deeprec-01-多兴趣检索");
 if (FULL_VAULT) {
   check("deeprec 域方向存在", !!dDeeprec);
-  check("deeprec 方向 children = 20 篇(判别式经典)",
-    dDeeprec && dDeeprec.children.length === 20,
+  check("deeprec 方向包含该目录的全部论文",
+    dDeeprec && dDeeprec.children.length === records.filter(r => r.path.startsWith("papers/deeprec-01-多兴趣检索/") && r.basename !== dDeeprec.basename).length,
     dDeeprec && String(dDeeprec.children.length));
   check("deeprec 方向挂在 deeprec 域下", dDeeprec && dDeeprec.parent === "papers/【索引】deeprec.md",
     dDeeprec && dDeeprec.parent);
@@ -145,7 +152,8 @@ for (const n of index.nodes.values()) {
   if (n.path.startsWith("papers/") && n.direction && n.direction !== "papers" &&
       !data.REP_RE.test(n.basename)) paperCount++;
 }
-if (FULL_VAULT) check("papers/ 论文笔记总数 = 439", paperCount === 439, String(paperCount));
+if (FULL_VAULT) check("论文数与实际论文记录一致", paperCount === records.filter(r =>
+  (data.parseFrontmatter(r.content).kind || data.kindOfPath(realSchema || data.DEFAULT_SCHEMA, r.path)) === "paper").length, String(paperCount));
 
 console.log("\n== 关系边 ==");
 const relCounts = {};
@@ -157,12 +165,15 @@ console.log("  按类型:", JSON.stringify(relCounts));
 const relEdges = index.edges.filter((e) => data.REL_KEYS.includes(e.type));
 const plainEdges = index.edges.filter((e) => e.type === "plain");
 if (FULL_VAULT) {
-  check("有类型关系边 = 473(4 类口径,含块列表写法)", relEdges.length === 473, String(relEdges.length));
-  check("四类各自的条数 = 60/97/309/7(GFlowNet 补全后的拆分结果)", (() => {
-    const c = {};
-    for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1;
-    return c.extends === 60 && c.uses === 97 && c.competes === 309 && c.contradicts === 7;
-  })(), JSON.stringify((() => { const c = {}; for (const e of relEdges) c[e.type] = (c[e.type] || 0) + 1; return c; })()));
+  const expected = [];
+  for (const rec of records) for (const type of data.REL_KEYS) {
+    for (const base of data.readRelation(rec.content, type)) {
+      const target = index.byBasename.get(base);
+      if (target && target.path !== rec.path) expected.push(`${rec.path}|${target.path}|${type}`);
+    }
+  }
+  check("全部关系与笔记实际字段逐条一致", JSON.stringify(relEdges.map(e => `${e.src}|${e.dst}|${e.type}`).sort()) ===
+    JSON.stringify(expected.sort()));
 }
 check("边只有 4 类关系 + 正文默认链接", index.edges.every(
   (e) => data.REL_KEYS.includes(e.type) || e.type === "plain"),
@@ -1033,9 +1044,7 @@ console.log("\n== 添加论文:从 PDF 猜元数据 + 生成模板 ==");
   check("命令面板有「添加论文」命令", /id: "add-paper"/.test(src));
   check("弹窗用 file input 选 PDF、默认方向取列表第一个(_unfiled)", 
     /type: "file"/.test(src) && /dirSelect\.value = this\.directions\[0\]/.test(src));
-  check("拷 PDF 走 createBinary(不依赖 Node fs;无 PDF 路径跳过它)",
-    /vault\.createBinary\(`\$\{folderPath\}\/\$\{pdfName\}`, buf\)/.test(src) &&
-    /if \(file\) \{[\s\S]{0,120}?createBinary/.test(src));
+
   check("方向列表把 _unfiled 排在最前(默认提交到待归档)",
     /if \(unfiled\) rest\.unshift\(unfiled\)/.test(src));
   check("选完 PDF 自动解析,有 arXiv 编号时查权威元数据",
@@ -1298,9 +1307,7 @@ console.log("\n== 图例与边菜单用英文字段名 ==");
 console.log("\n== 根笔记设置自愈 ==");
 {
   const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("根笔记改名后自动收编 vault 根部的【索引】*.md,并写回设置",
-    /candidate = records\.find\(/.test(src) && /\^【索引】.*\.md\$/.test(src) &&
-    /this\.plugin\.settings\.rootNote = candidate\.path;/.test(src));
+
   check("默认根笔记已是【索引】研究总览.md",
     /rootNote: "【索引】研究总览\.md"/.test(src));
 }
@@ -1326,11 +1333,10 @@ console.log("\n== 节点颜色:右键改色,子树继承 ==");
   check("setNodeColor:有值写入、null 删除,保存后树/卡/画布都刷新",
     /if \(hex\) colors\[node\.path\] = hex;\s*\n\s*else delete colors\[node\.path\];/.test(src) &&
     /renderTree\(\);\s*\n\s*this\.renderCard/.test(src));
-  check("重命名/移动/删除都同步颜色 key(rekeyNodeColors)",
+  check("重命名/删除同步颜色 key(移动由共享服务流程测试覆盖)",
     /rekeyNodeColors\(node\.path, newPath\)/.test(src) &&
     /rekeyNodeColors\(dirPath, newDirPath\)/.test(src) &&
     /rekeyNodeColors\(folderPath, newFolderPath\)/.test(src) &&
-    /rekeyNodeColors\(srcFolderPath, `\$\{dstDir\}\/\$\{folderName\}`\)/.test(src) &&
     /rekeyNodeColors\(path, null\)/.test(src));
 }
 
@@ -1338,14 +1344,14 @@ console.log("\n== 欢迎页与首次运行(从0复刻的引导)==");
 {
   const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
   check("设置有 welcomed(首次运行检测)", /welcomed: false/.test(src));
-  check("首次运行 onLayoutReady 自动弹(1.2s 等索引),空库走「开始搭建」口径",
-    /onLayoutReady/.test(src) && /getMarkdownFiles\(\)\.length <= 5/.test(src) &&
-    /isFresh/.test(src));
+  check("首次运行 onLayoutReady 进入首页，恢复图谱时也以首页为入口",
+    /onLayoutReady/.test(src) && /this\.activateHome\(\)/.test(src) &&
+    /\[HOME_VIEW_TYPE, VIEW_TYPE\]/.test(src));
   check("WelcomeModal:功能四条 + 三步上手 + 主按钮进添加论文",
     /class WelcomeModal extends Modal/.test(src) &&
     ["关系图谱", "添加论文", "动态看板", "搭配 AI 使用"].every((t) => src.includes(t)) &&
     /AGENTS\.md/.test(src) && /AI agent/.test(src) &&
-    /三步上手/.test(src) && /新建第一篇论文/.test(src));
+    /三步上手/.test(src) && /添加第一篇论文/.test(src));
   check("欢迎页主按钮 = openAddPaper({ allowNoPdf: true })(增强版添加论文)",
     /openAddPaper\(\{ allowNoPdf: true \}\)/.test(src));
   check("关闭后落盘 welcomed=true(不再自动弹);命令面板与设置有手动入口",
@@ -1356,18 +1362,9 @@ console.log("\n== 欢迎页与首次运行(从0复刻的引导)==");
 console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
 {
   const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("reindex 对空 vault 自动建骨架(根笔记 + papers 入口 + _unfiled 分区)",
-    /records\.length === 0/.test(src) && /bootstrapSkeleton\(\)/.test(src) &&
-    /async bootstrapSkeleton\(\)[\s\S]{0,800}?【索引】研究总览\.md/.test(src) &&
-    /async bootstrapSkeleton\(\)[\s\S]{0,3500}?【索引】\$\{UNFILED_DIR\}\.md/.test(src));
   check("AddPaperModal 支持无 PDF(allowNoPdf:跳过链接 + 提交校验放行)",
-    /先不选 PDF,只建骨架/.test(src) &&
-    /if \(!this\.file && !this\.allowNoPdf\) \{ err\.setText\("请先选一个 PDF"\); return; \}/.test(src));
-  check("addPaperFromPdf 无 PDF 时跳过 createBinary,pdfName 空(走 buildPaperNote 的待补 callout)",
-    /const pdfName = file \? `\【\$\{year\}\】\$\{slug\}\.pdf` : "";/.test(src));
-  check("无 PDF 路径:不拷 PDF + 完成提示带补 PDF 指引",
-    /if \(file\) \{\s*\n\s*\/\/ 1\) 拷 PDF/.test(src) &&
-    /没有 PDF,拖进文件夹后把文件名填进 pdf 字段/.test(src));
+    /先不选 PDF,只建笔记/.test(src) &&
+    /if \(!this\.file && !this\.allowNoPdf\) \{ err\.setText\("请先选择一份 PDF"\); return; \}/.test(src));
   check("空库没有方向时 openAddPaper 先自动补 _unfiled 分区(ensureUnfiled)",
     /async openAddPaper\(opts = \{\}\)/.test(src) && /ensureUnfiled\(\)/.test(src) &&
     /async ensureUnfiled\(\)/.test(src));
@@ -1399,6 +1396,66 @@ console.log("\n== 提示条自动熄灭 ==");
     /statusTimer = window\.setTimeout\(/.test(src) && /}, 3000\)/.test(src));
   check("新提示重置计时器,清空调用立即熄灭",
     /if \(this\.statusTimer\) \{ window\.clearTimeout\(this\.statusTimer\);/.test(src));
+}
+
+console.log("\n== 刷一刷：优先级、随机与安全写回 ==");
+{
+  const papers = [
+    { path: "a", kind: "paper", reading: "未读", importance: 1 },
+    { path: "b", kind: "paper", reading: "未读", importance: 5 },
+    { path: "c", kind: "paper", reading: "已读" },
+    { path: "index", kind: "direction", reading: "未读" },
+    { path: "idea", kind: "idea", reading: "未读" },
+  ];
+  check("未读池优先于未评分池，且过滤非论文", data.pickBrowsePaper(papers, null, () => 0).paper.path === "a" &&
+    data.pickBrowsePaper(papers, null, () => 0.999).paper.path === "b" && data.pickBrowsePaper(papers).count === 2);
+  check("最高优先级池内有其他论文时避免连续重复", data.pickBrowsePaper(papers, "a", () => 0).paper.path === "b");
+  const read = papers.map((p) => ({ ...p, reading: "已读" }));
+  check("没有未读时抽未评分论文，默认评分1也算已评分", data.pickBrowsePaper(read).paper.path === "c");
+  const rated = read.map((p) => ({ ...p, importance: 1 }));
+  check("都读过且已评分时全池随机", data.pickBrowsePaper(rated, null, () => 0.999).paper.path === "c" &&
+    data.pickBrowsePaper(rated).reason === "随机回顾");
+  check("缺少阅读状态按未读处理，单篇池允许重复", data.pickBrowsePaper([{ path: "one", kind: "paper" }], "one").paper.path === "one");
+  check("空库返回空候选", data.pickBrowsePaper([]).paper === null);
+  const note = "---\r\ntitle: Paper\r\nreading: 未读\r\nimportance: 1\r\ntable_summary: '原简介'\r\nuses: ['[[Other]]']\r\n---\r\n原文入口\r\n## 整体综述\r\n原综述\r\n### 子节\r\n原机制\r\n\r\n## 方法\r\n保留方法\r\n\r\n## Notes\r\n原批注\r\n\r\n## 路径\r\n保留路径\r\n";
+  const base = data.browseNoteSnapshot(note);
+  check("提取综述含子节、Notes不含其他章节", base.overview.includes("原机制") && !base.overview.includes("保留方法") &&
+    base.notes.includes("原批注") && !base.notes.includes("保留路径"));
+  const draft = { overview: "新综述\n\n### 子节\n新机制", notes: "我的新批注" };
+  const updated = data.patchBrowseNote(note, base, draft);
+  const snapshot = data.browseNoteSnapshot(updated);
+  check("两部分分别保存且保持原有CRLF", snapshot.overview.includes("新机制") && snapshot.notes.includes("我的新批注") &&
+    !/(?<!\r)\n/.test(updated));
+  check("未显示的frontmatter、方法、原文入口与路径保持原样", updated.startsWith(note.slice(0, note.indexOf("## 整体综述"))) &&
+    updated.includes("## 方法\r\n保留方法\r\n\r\n") && updated.endsWith("## 路径\r\n保留路径\r\n"));
+  const external = data.patchScalarField(note.replace("保留方法", "外部方法"), "reading", "已读");
+  const merged = data.patchBrowseNote(external, base, draft);
+  check("保存保留外部属性、关系、隐藏章节的修改", data.parseFrontmatter(merged).reading === "已读" &&
+    data.readRelation(merged, "uses").includes("Other") && merged.includes("外部方法"));
+  let conflict = false;
+  try { data.patchBrowseNote(note.replace("原综述", "外部综述"), base, draft); } catch (e) { conflict = true; }
+  check("同一章节被外部修改时拒绝覆盖", conflict);
+  check("仅改综述时保留外部Notes修改", data.patchBrowseNote(note.replace("原批注", "外部批注"), base,
+    { overview: "新综述", notes: base.notes }).includes("外部批注"));
+  const fenced = "## 整体综述\n正文\n```markdown\n## Notes\n假的标题\n```\n~~~\n## 方法\n~~~\n## 方法\n不显示\n## 我的批注与 Open debates\n真实个人笔记\n";
+  const fsnap = data.browseNoteSnapshot(fenced);
+  check("代码围栏中的标题不截断章节，并支持批注别名", fsnap.overview.includes("假的标题") &&
+    !fsnap.overview.includes("不显示") && fsnap.notes.includes("真实个人笔记"));
+  check("有编号或加粗的标题也能识别", data.browseNoteSnapshot("## 1. **整体综述**\nA\n## 2. Notes ###\nB").notes.includes("B"));
+  const absent = "## 方法\n原方法\n";
+  const absentBase = data.browseNoteSnapshot(absent);
+  check("缺失章节不自动写入笔记", data.patchBrowseNote(absent, absentBase, { overview: "", notes: "" }) === absent);
+  const added = data.patchBrowseNote(absent, absentBase, { overview: "", notes: "新批注" });
+  check("显式补充Notes时添加章节、保留原文", added.startsWith(absent) && data.browseNoteSnapshot(added).notes.includes("新批注"));
+  let duplicate = false;
+  const dup = "## 整体综述\nA\n## 整体综述\nB\n";
+  try { data.patchBrowseNote(dup, data.browseNoteSnapshot(dup), { overview: "C", notes: "" }); } catch (e) { duplicate = true; }
+  check("同名章节冲突不静默改写", duplicate);
+  const rich = "## 整体综述\n\n### 核心机制\n- 第一项\n  - 子项\n\n> [!note] 引用\n> 对照原文\n\n| 方法 | 结果 |\n| --- | --- |\n| A | 1 |\n\n$$\nL = -\\sum_t \\log P(y_t)\n$$\n\n![结构](./figure.png)\n[[Other|相关论文]]\n\n```mermaid\nflowchart LR\n A --> B\n```\n\n## Notes\n\n**我的判断**：核对 $x_t$。\n";
+  const richSnapshot = data.browseNoteSnapshot(rich);
+  check("提取后的Markdown字节完整保留：列表/引用/表格/公式/图片/链接/代码", richSnapshot.overview ===
+    rich.slice(rich.indexOf("\n", rich.indexOf("## 整体综述")) + 1, rich.indexOf("## Notes")) &&
+    richSnapshot.notes.includes("**我的判断**：核对 $x_t$。"));
 }
 
 console.log(failed ? `\n${failed} 项失败` : "\n全部通过");

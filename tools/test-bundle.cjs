@@ -13,6 +13,8 @@ try {
   const bundled = require(path.join(tmp, 'main.js'));
   const source = require('../src/main.js');
   assert.ok(bundled.adapters, 'Locator adapter must be bundled');
+  assert.ok(bundled.homeArtwork.startsWith('data:image/svg+xml'), 'Home artwork must work in the three-file release');
+  assert.ok(decodeURIComponent(bundled.homeArtwork).includes('viewBox="675 80 560 340"'), 'Home artwork uses the cover illustration');
   assert.deepEqual(bundled.adapters.parseLocator('ssh://user@host/path'), source.adapters.parseLocator('ssh://user@host/path'));
   assert.deepEqual(bundled.REL_META, source.REL_META);
   assert.deepEqual(bundled.DEFAULT_SCHEMA, source.DEFAULT_SCHEMA);

@@ -10,6 +10,7 @@ const options = {
   bundle: true,
   format: 'cjs',
   platform: 'node',
+  loader: { '.svg': 'text' },
   target: 'es2018',
   external: ['obsidian', 'electron'],
   logLevel: 'info',

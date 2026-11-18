@@ -249,6 +249,10 @@
     },
     {
       "kind": "idea",
+      "path_regex": "^ideas/【idea】[^/]+\\.md$"
+    },
+    {
+      "kind": "idea",
       "path_regex": "^ideas/.+/【idea】[^/]+\\.md$"
     }
   ],

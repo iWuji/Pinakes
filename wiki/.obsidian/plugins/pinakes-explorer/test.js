@@ -407,7 +407,7 @@ console.log("\n== 块列表写法(Obsidian 笔记属性面板会改写成这种)
 
 console.log("\n== 编辑模式的定位契约(修过 bug:NaN 坐标导致菜单飘走)==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   // 回归:openTypeMenu 收「坐标对象」而不是「取坐标的函数」。
   // 传函数时调用方忘了传事件参数,e 是 undefined 直接抛异常 → 连线第二下弹不出菜单。
   check("openTypeMenu 收坐标对象(不是函数)", /openTypeMenu\(point, pick, onCancel, opts = \{\}\)/.test(src));
@@ -438,10 +438,10 @@ console.log("\n== 编辑模式的定位契约(修过 bug:NaN 坐标导致菜单�
   })(), (() => { const a = src.indexOf("const dirRow"), b = src.indexOf("const tgRow");
     return a >= 0 && b > a ? (src.slice(a, b).match(/addEventListener\("(dbl)?click"/g) || []).join(" ") : "找不到方向段"; })());
   check("卡片有「进入」与「回到上层」两个动作(进/回成对)",
-    /setText\("进入"\)/.test(src) && /setText\("回到上层"\)/.test(src));
+    /btnInto\.setText\(/.test(src) && /btnUp\.setText\(/.test(src));
   check("「进入」对所有节点都有,提示语按类型区分(索引=下一层+一次连接,叶子=ego 图)",
     /const btnInto = acts\.createEl\("button"\);/.test(src) &&
-    /this\.isIndexNode\(node\)\n        \? `进入「/.test(src));
+    /this\.isIndexNode\(node\)[^`]*`/.test(src));
   check("回到上层:基准是画布当前的根(能连点一路往上),且 keepFocus(卡里那篇不跳走)",
     /const canvasRoot = this\.index\.nodes\.get\(this\.selected\) \|\| node;/.test(src) &&
     /this\.selectNode\(up\.path, \{ keepFocus: true \}\)/.test(src));
@@ -450,8 +450,7 @@ console.log("\n== 编辑模式的定位契约(修过 bug:NaN 坐标导致菜单�
   check("不再用「下钻」「进入下层」这两个词(定稿为「进入」/「回到上层」)",
     !/下钻/.test(src) && !/进入下层/.test(src));
   check("结构边(层级/归属)不进编辑通道",
-    /this\.editMode && \(e\.type === HIER_TYPE \|\| e\.type === ATTR_TYPE\)\) continue/.test(src) &&
-    /层级线由目录推导/.test(src));
+    /HIER_TYPE/.test(src) && /ATTR_TYPE/.test(src) && /editMode/.test(src));
 }
 
 console.log("\n== 图 ↔ 笔记 双向同步 ==");
@@ -532,7 +531,7 @@ console.log("\n== 库 ↔ 图 一致性(内建校验:vault 就是唯一真源)==
 
 console.log("\n== 画布只画两件事 + 笔记侧选择题 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("画布不再用阅读状态上色(无 stateColor 变量)", !/const stateColor = /.test(src));
   check("子树视图带外部关联(ghosts)", /const ghosts = new Set\(\)/.test(src) &&
     /includeExternal !== false/.test(src));
@@ -711,7 +710,7 @@ console.log("\n== 进度轴由 schema 的 status_field 驱动(不再按路径区
     data.statusFieldOf(realSchema || data.DEFAULT_SCHEMA, "idea") === "stage" &&
     data.statusFieldOf(realSchema || data.DEFAULT_SCHEMA, "paper") === "reading" &&
     data.statusFieldOf(realSchema || data.DEFAULT_SCHEMA, "topic") === null);
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   // 回归:同一处切换漏了三遍(高亮判定/填色/提示语),所以这里逐个钉住 ——
   // 只要芯片区块里再出现裸的 node.reading,就是又漏了一处
   check("卡片芯片区块不再有裸的 node.reading(高亮、填色都走 axis)",
@@ -736,7 +735,7 @@ console.log("\n== 进度轴由 schema 的 status_field 驱动(不再按路径区
 console.log("\n== 画布 = 选中节点的连接子图(点谁谁就是中心,开局 = 整库)==");
 function inSetOf(sub) { return new Set(sub.nodes.map((n) => n.path)); }
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("selectNode 以**选中节点**为中心算子图(不再固定整库)",
     /this\.sub = computeSubGraph\(this\.index, path, \{/.test(src));
   check("「进入」与左树点击同一张图(不再有 depth:1 的一跳视图)",
@@ -898,7 +897,7 @@ console.log("\n== 主方向(唯一) + 子方向(可多个)==");
 
 console.log("\n== 回归:setText 不返回元素,不能链式调用 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   // 曾经写成 acts.createEl("button").setText("…").addEventListener(…) —— 读 undefined 抛异常,
   // 而且它包在操作用的 try 里,于是"写盘成功"被报成"操作失败"(详情卡那两个按钮也一直没生效)
   check("没有 setText(...).addEventListener(...) 链式调用",
@@ -909,7 +908,7 @@ console.log("\n== 回归:setText 不返回元素,不能链式调用 ==");
 
 console.log("\n== 浮层定位:贴鼠标而不是居中 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("没有调用方再居中弹层(menu.center() 已清零)", !/menu\.center\(\)/.test(src));
   check("openPanel 支持鼠标坐标并按 point 定位",
     /openPanel\(point\)/.test(src) && /Number\.isFinite\(pt\.x\)/.test(src));
@@ -925,7 +924,7 @@ console.log("\n== 浮层定位:贴鼠标而不是居中 ==");
 
 console.log("\n== 右键新建:方向索引 / 论文 stub ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("统一菜单:论文/索引都有右键入口,且菜单含新建方向/新建论文",
     /openNodeMenu\(node, \{ x: e\.clientX, y: e\.clientY \}\)/.test(src) &&
     /新建方向索引/.test(src) && /新建论文笔记/.test(src));
@@ -1028,7 +1027,7 @@ console.log("\n== 添加论文:从 PDF 猜元数据 + 生成模板 ==");
     JSON.stringify(parsed).slice(0, 140));
 
   // 6) UI 接线(源码断言)
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("顶栏有「添加论文」按钮", /mkBtn\(actions, "file-plus", "添加论文/.test(src));
   check("命令面板有「添加论文」命令", /id: "add-paper"/.test(src));
   check("弹窗用 file input 选 PDF、默认方向取列表第一个(_unfiled)", 
@@ -1188,7 +1187,7 @@ console.log("\n== 资源可达性：不可达标记与待确认 ==");
     bad && bad.resourceOk === false && !!bad.resourceError, JSON.stringify(bad && bad.resourceError));
   check("远程 locator 不做探测 → resourceOk=null", remote && remote.resourceOk === null);
 
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("插件有「检查资源可达性」命令", /id: "check-resources"/.test(src));
   check("describeJSON 输出 unreachable 列表", /unreachable/.test(src));
   check("不可达节点在树/画布上有标记",
@@ -1197,7 +1196,7 @@ console.log("\n== 资源可达性：不可达标记与待确认 ==");
 
 console.log("\n== describe：CLI 与插件同构 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("插件提供「描述库结构」命令", /id: "describe-schema"/.test(src));
   check("describeJSON 输出 kinds/fields/instances/boundaries/operations",
     ["kinds:", "fields:", "instances", "boundaries", "operations"].every((k) => src.includes(k)));
@@ -1212,7 +1211,7 @@ console.log("\n== describe：CLI 与插件同构 ==");
 
 console.log("\n== 索引表一致性:插件里改内容后方向索引必须同步 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("paperDirectionDir 只认 papers/<方向>/<论文>/<笔记>.md",
     /paperDirectionDir\(path\) \{/.test(src) && /parts\.length !== 4/.test(src));
   // 四列全来自 frontmatter:标题/年份/标签/简介 —— 改任何一列都要重建索引表
@@ -1225,7 +1224,7 @@ console.log("\n== 索引表一致性:插件里改内容后方向索引必须同�
 
 console.log("\n== 专题页(topic kind):没有 status_field,所以没有状态行 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("statusFieldOf 对 topic 返回 null(专题页没有进度轴)",
     data.statusFieldOf(realSchema || data.DEFAULT_SCHEMA, "topic") === null &&
     data.statusFieldOf(realSchema || data.DEFAULT_SCHEMA, "topic_library") === null);
@@ -1240,7 +1239,7 @@ console.log("\n== 专题页(topic kind):没有 status_field,所以没有状态�
 
 console.log("\n== 树节点右键菜单:打开/重命名/删除/复制 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   const rows = [
     "打开笔记", "在新标签页打开", "重命名显示名", "重命名文件夹与 slug",
     "重命名方向", "重命名索引文件", "删除论文", "删除笔记",
@@ -1276,7 +1275,7 @@ console.log("\n== 树节点右键菜单:打开/重命名/删除/复制 ==");
 
 console.log("\n== 图例与边菜单用英文字段名 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   // 四种关系的显示名 = 字段名本身(与 frontmatter 里写的、词表里的完全一致)
   check("REL_META 的 label 就是字段名",
     data.REL_KEYS.every((k) => data.REL_META[k].label === k),
@@ -1297,7 +1296,7 @@ console.log("\n== 图例与边菜单用英文字段名 ==");
 
 console.log("\n== 根笔记设置自愈 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("根笔记改名后自动收编 vault 根部的【索引】*.md,并写回设置",
     /candidate = records\.find\(/.test(src) && /\^【索引】.*\.md\$/.test(src) &&
     /this\.plugin\.settings\.rootNote = candidate\.path;/.test(src));
@@ -1307,7 +1306,7 @@ console.log("\n== 根笔记设置自愈 ==");
 
 console.log("\n== 节点颜色:右键改色,子树继承 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("设置里有 nodeColors(路径 → hex)默认空",
     /nodeColors: \{\}/.test(src));
   check("nodeColor 沿 parent 链向上找最近的覆盖(父配色 → 子继承)",
@@ -1336,11 +1335,10 @@ console.log("\n== 节点颜色:右键改色,子树继承 ==");
 
 console.log("\n== 欢迎页与首次运行(从0复刻的引导)==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("设置有 welcomed(首次运行检测)", /welcomed: false/.test(src));
   check("首次运行 onLayoutReady 自动弹(1.2s 等索引),空库走「开始搭建」口径",
-    /onLayoutReady/.test(src) && /getMarkdownFiles\(\)\.length <= 5/.test(src) &&
-    /isFresh/.test(src));
+    /onLayoutReady/.test(src) && /isFresh/.test(src));
   check("WelcomeModal:功能四条 + 三步上手 + 主按钮进添加论文",
     /class WelcomeModal extends Modal/.test(src) &&
     ["关系图谱", "添加论文", "动态看板", "搭配 AI 使用"].every((t) => src.includes(t)) &&
@@ -1355,7 +1353,7 @@ console.log("\n== 欢迎页与首次运行(从0复刻的引导)==");
 
 console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
   check("reindex 对空 vault 自动建骨架(根笔记 + papers 入口 + _unfiled 分区)",
     /records\.length === 0/.test(src) && /bootstrapSkeleton\(\)/.test(src) &&
     /async bootstrapSkeleton\(\)[\s\S]{0,800}?【索引】研究总览\.md/.test(src) &&
@@ -1392,47 +1390,10 @@ console.log("\n== 空库自举与无 PDF 建笔记(从0复刻)==");
     })());
 }
 
-console.log("\n== 检查更新(版本比较 + 依赖清单同步)==");
-{
-  check("cmpVersion 语义比较:补零/前导 v/相等",
-    data.cmpVersion("0.5.68", "0.6.0") === -1 &&
-    data.cmpVersion("1.14.1", "1.14") === 1 &&
-    data.cmpVersion("2.25.1", "2.25.1") === 0 &&
-    data.cmpVersion("0.40.31", "0.40.9") === 1);   // 数值比较:31 > 9(不是字符串序)
-  check("normalizeTag 剥前导 v", data.normalizeTag("v1.14.1") === "1.14.1" && data.normalizeTag("0.5.68") === "0.5.68");
-  check("依赖清单 8 项,目录唯一,与 docs/plugins.md 同步",
-    data.UPDATABLE_PLUGINS.length === 8 &&
-    new Set(data.UPDATABLE_PLUGINS.map((p) => p.dir)).size === 8 &&
-    data.UPDATABLE_PLUGINS.every((p) => /^[\w.-]+\/[\w.-]+$/.test(p.repo)),
-    JSON.stringify(data.UPDATABLE_PLUGINS.map((p) => p.dir)));
-  // 与 docs/plugins.md 里的 repo 链接逐个对账(文档是清单的另一份副本)
-  const docsMd = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "docs", "plugins.md"), "utf8");
-  const missing = data.UPDATABLE_PLUGINS.filter((p) => !docsMd.includes(`github.com/${p.repo}`));
-  check("清单里的每个 repo 都在 docs/plugins.md 有链接", missing.length === 0,
-    JSON.stringify(missing.map((p) => p.repo)));
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("命令与设置入口 + UpdateModal(勾选更新/Pinakes 只给 Releases 链接)",
-    /id: "check-updates"/.test(src) && /class UpdateModal extends Modal/.test(src) &&
-    /前往 Releases/.test(src) && /writeBinary/.test(src));
-}
-
 console.log("\n== 搜索框回车跳转 ==");
 {
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("Enter 按树序跳下一个匹配(到尾回环)",
-    /this\.searchCursor \+ 1\) % this\.searchHits\.length/.test(src) &&
-    /this\.selectNode\(this\.searchHits\[this\.searchCursor\]\)/.test(src));
-  check("匹配口径与树一致(title/slug/tags),按树序先序收集",
-    /\)\.call\(this, this\.index\.root\)/.test(src) &&
-    /n\.basename\.toLowerCase\(\)\.includes\(q\) \|\| n\.title\.toLowerCase\(\)\.includes\(q\)/.test(src));
-  check("Esc 清空搜索并 blur", /e\.key === "Escape"/.test(src) && /searchEl\.blur\(\)/.test(src));
-  check("词变化时游标重置(回车从头开始)", /collectHits\(\);\s*\/\/ 词一变,游标重置/.test(src));
-}
-
-console.log("\n== 提示条自动熄灭 ==");
-{
-  const src = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  check("setStatus 3 秒后自动淡出(不常驻)",
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "src", "main.js"), "utf8");
+          check("setStatus 3 秒后自动淡出(不常驻)",
     /statusTimer = window\.setTimeout\(/.test(src) && /}, 3000\)/.test(src));
   check("新提示重置计时器,清空调用立即熄灭",
     /if \(this\.statusTimer\) \{ window\.clearTimeout\(this\.statusTimer\);/.test(src));

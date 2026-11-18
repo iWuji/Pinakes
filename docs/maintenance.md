@@ -4,7 +4,7 @@
 
 ## 源码与发行物
 
-- `src/main.js`、`src/adapters.js` 是插件 JavaScript 的唯一维护入口，根目录 `styles.css` 是样式源文件。
+- 插件 JavaScript 只维护 `src/` 中的源码：`main.js` 为界面入口，`library-service.js` 为共享索引、导入与恢复服务，`adapters.js` 为资源适配器。根目录 `styles.css` 是样式源文件。
 - `manifest.json` 是插件元数据真源；ID 固定为 `pinakes-explorer`。版本与 `package.json`、`versions.json` 同步。
 - esbuild 将源码与适配器打包为根目录 `main.js`。Obsidian 只需 `main.js`、`manifest.json`、`styles.css`，不能依赖额外的本地模块。
 - `wiki/.obsidian/plugins/pinakes-explorer/` 是本机运行副本；`installer/template/` 是可选完整库模板。不要直接改这些副本再反推源码。
@@ -24,6 +24,14 @@ python3 tools/lint.py --wiki-dir wiki/
 ```
 
 插件变更运行构建、元数据检查、公开模板回归与三文件发行包测试。本地完整内容回归可运行 `npm run test:vault`。lint 的 error 必须为 0，warn 是已有待补内容，不允许通过编造元数据消除。测试库与真实 Obsidian 界面验证分开报告，Node 测试不能证明界面已验证。
+
+`npm test` 还运行 `tools/test-workflows.cjs` 的固定小库故障测试，覆盖关系写入中断与补偿、导入重试、空方向归档、原生首页入口和异步表单。真实库数量断言根据当前笔记字段与目录计算，不更新固定数量去追随内容增长。
+
+跨文件关系翻转与导入先写入插件目录下的 `operations.json`； `.bak` 保留上一份有效记录。未完成操作在首页和命令面板提供恢复入口。补偿只修改相关关系成员；撤销导入只处理本次新建且内容未改变的文件夹，人工改动和未知文件必须保留。
+
+PDF 更新和归档也通过共享服务记录操作。PDF 先备份旧文件与笔记，保存后校验内容，失败只恢复关联属性与原文入口；其他正文不整篇覆盖。归档保留原笔记备份，并在文件夹移动后继续同步归属、索引、颜色和阅读历史，失败在首页提供继续完成入口。仅符合独立论文文件夹格式的笔记可整目录归档。
+
+最近阅读与位置由 `src/reading-session.js` 保存到插件设置；`reading` 和 `importance` 仍只从 Markdown 获取。打开、恢复阅读不会自动改动阅读状态。阅读设置应保持本地个人数据，不写入模板或知识笔记。
 
 `npm run dev` 只持续构建，不自动改写用户 vault。手动安装到独立测试 vault 后启用插件，验证导入、移动、关系编辑与生命周期。
 

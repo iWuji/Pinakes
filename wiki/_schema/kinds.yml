@@ -144,4 +144,6 @@ detect:
   - kind: idea_package
     path_regex: '^ideas/[^/]+/【索引】[^/]+\.md$'
   - kind: idea
+    path_regex: '^ideas/【idea】[^/]+\.md$'   # 单文档想法:一个想法一个 md,不建方案包目录
+  - kind: idea
     path_regex: '^ideas/.+/【idea】[^/]+\.md$'

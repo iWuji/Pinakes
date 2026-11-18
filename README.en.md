@@ -49,18 +49,25 @@ In Pinakes, follow the topic tree to a paper and explore the graph to see which 
 
 - **Collect**: import a PDF with “Add paper.” Pinakes tries to extract metadata and creates a note outline, keeping the original file intact. You can also create a note and add the PDF later.
 - **Understand**: read the source alongside your notes, recording mechanisms, equations, experiments, and limitations. Obsidian displays equations, images, and Mermaid diagrams natively.
+- **Shuffle**: read the overview and personal notes of a random paper in a separate modal, prioritizing unread papers, then papers without an importance rating. Edit reading status and these sections directly.
 - **Connect**: browse by research topic and use the graph to view and edit relationships: extensions, reuse, competing approaches, and conflicting conclusions.
 - **Add your judgment**: edit the text, reading status, importance, and tags. Develop your annotations into research reviews, ideas, and experiment plans.
 - **Keep exploring**: ask AI to read your existing notes and ideas, then continue organizing them while preserving source evidence and your own judgments.
 
 You and AI read and write the same notes. Edit the text directly, or change properties and relationships in the interface; the changes are saved to Markdown.
 
+Home brings the features together and recommends a random paper on each visit. Open its card to read and shuffle through notes; choose the graph when you want to explore relationships.
+
+The paper library, reading queue, topics, and ideas use native lists and work without companion plugins or pre-created dashboards. Failed imports keep the form for retry; unfinished imports and relationship operations can be recovered from Home.
+
+Home supports search and resuming your last paper. Lists also support attaching or replacing PDFs and archiving multiple papers. PDF replacement keeps a backup, archive results are reported per paper, and reading history follows moved notes.
+
 ## Get started
 
 The current plugin interface and detailed project guides are primarily in Chinese. The steps below include the Chinese labels you will see in Obsidian.
 
 1. [Install Pinakes](#installation), open a new Obsidian vault, and enable the plugin.
-2. In the command palette, search for **「打开关系图谱」** (“Open relationship graph”), then click **「添加论文」** (“Add paper”) in the top bar and choose a PDF.
+2. Click the house icon or search for **「打开首页」** (“Open Home”), then choose **「添加论文」** (“Add paper”) and select a PDF.
 3. Review the extracted information and save. New papers go into **「待归档」** (“Unfiled”). Once you choose a research topic, drag the paper into that topic in the tree.
 4. Open the note to read, edit, and add your ideas. Use the workflow below when you want AI to help.
 

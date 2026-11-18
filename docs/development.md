@@ -21,6 +21,8 @@ npm test
 | --- | --- |
 | `src/main.js` | 插件入口、界面与数据层 |
 | `src/adapters.js` | locator 资源适配器，构建时内嵌 |
+| `src/library-service.js` | 共享索引、论文导入、操作记录与关系恢复；不依赖视图 |
+| `src/reading-session.js` | 最近阅读记录、位置保存与路径更新；不修改论文属性 |
 | `src/test.js` | 数据层与知识库回归 |
 | `manifest.json` | 插件标识、版本与兼容要求 |
 | `styles.css` | 插件样式 |
@@ -34,11 +36,19 @@ npm test
 
 只编辑 `src/`、根目录 manifest 和样式。`wiki/.obsidian/plugins/pinakes-explorer/` 是本机安装副本，`installer/template/.obsidian/plugins/pinakes-explorer/` 是完整库模板中的发行副本，都不是源码入口。
 
+原生论文库、阅读队列、专题与想法页面不依赖 Dataview 或模板。首页与图谱通过共享服务完成导入，不能借用另一种视图的原型构建业务对象。
+
+固定数据流程测试可单独运行 `node tools/test-workflows.cjs`。使用 `tools/test-host.cjs` 的隔离虚拟库注入磁盘失败和延迟返回，不访问个人研究库；它不替代 Obsidian 真机验证。
+
+`node tools/test-stage2.cjs` 覆盖阅读位置、首页搜索、PDF 更新及备份、批量归档与恢复；完整 `npm test` 包含这组测试。位置恢复的真实效果需在 Obsidian 的 Markdown 与插件阅读弹窗中分别验证，模拟宿主不证明 PDF 页码恢复。
+
 ## 本地试用
 
 先构建，再将根目录的 `main.js`、`manifest.json`、`styles.css` 复制到测试 vault 的 `.obsidian/plugins/pinakes-explorer/`。重启 Obsidian 并启用插件。仅使用独立测试库，确认导入、移动、关系编辑与卸载行为后再更新日常研究库。
 
 构建产物已包含 locator 适配器，无需额外安装 `adapters.js`、npm 包或 Python。源码仓库自身不直接作为运行中的插件目录。
+
+首页共读插画来自 `docs/pinakes-cover.svg`，esbuild 使用文本 loader 将它内嵌到 `main.js`；首页只裁取原图的插画区域。发行包无需单独复制 SVG，修改主图后重新构建即可。
 
 ## 知识库与模板变更
 

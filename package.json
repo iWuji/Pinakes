@@ -7,7 +7,7 @@
     "build": "node tools/build.mjs",
     "dev": "node tools/build.mjs --watch",
     "check": "node tools/check-plugin.mjs",
-    "test": "node src/test.js installer/template && node tools/test-bundle.cjs && node tools/test-release.mjs",
+    "test": "node src/test.js installer/template && node tools/test-browse.cjs && node tools/test-workflows.cjs && node tools/test-stage2.cjs && node tools/test-bundle.cjs && node tools/test-release.mjs",
     "test:vault": "node src/test.js wiki"
   },
   "devDependencies": {
