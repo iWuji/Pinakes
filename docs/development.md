@@ -23,6 +23,8 @@ npm test
 | `src/adapters.js` | locator 资源适配器，构建时内嵌 |
 | `src/library-service.js` | 共享索引、论文导入、操作记录与关系恢复；不依赖视图 |
 | `src/reading-session.js` | 最近阅读记录、位置保存与路径更新；不修改论文属性 |
+| `src/paper-search.js` | 内置模糊匹配、搜索索引缓存及可选 Omnisearch API 合并 |
+| `src/activity-log.js` | 本地活跃度记录、保存去重、笔记变更基线与日历计算 |
 | `src/test.js` | 数据层与知识库回归 |
 | `manifest.json` | 插件标识、版本与兼容要求 |
 | `styles.css` | 插件样式 |
@@ -41,6 +43,10 @@ npm test
 固定数据流程测试可单独运行 `node tools/test-workflows.cjs`。使用 `tools/test-host.cjs` 的隔离虚拟库注入磁盘失败和延迟返回，不访问个人研究库；它不替代 Obsidian 真机验证。
 
 `node tools/test-stage2.cjs` 覆盖阅读位置、首页搜索、PDF 更新及备份、批量归档与恢复；完整 `npm test` 包含这组测试。位置恢复的真实效果需在 Obsidian 的 Markdown 与插件阅读弹窗中分别验证，模拟宿主不证明 PDF 页码恢复。
+
+`node tools/test-search.cjs` 覆盖模糊匹配、缓存更新、输入法、异步结果过期、键盘选择与 Omnisearch 不可用时的回退。首页内置搜索索引只保存在内存中，vault 事件使缓存失效；Omnisearch 可选集成调用公开的 `search(query)` API，不复制其插件代码。
+
+`node tools/test-activity.cjs` 验证活跃度的本地日期、初始化不造历史、状态去重、导入成功记录、外部 Markdown 修改、数据持久化及失败处理。日历使用本地日历日期计算，避免按 UTC 或固定毫秒减日产生时区／夏令时错误；首次扫描仅建立变更基线。
 
 ## 本地试用
 

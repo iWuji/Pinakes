@@ -18,6 +18,7 @@ Pinakes 的说明、规范与参考原文统一放在本目录，每份文档只
 | 文档 | 内容 |
 | --- | --- |
 | [知识库约定](wiki-conventions.md) | 目录、frontmatter、标签、关系、论文阅读与写作流程 |
+| [ingest prompt](ingest-prompt.md) | 可交给其他 agent 的论文录入任务提示，调用统一的阅读、写作与验收标准 |
 | [实体模型](entity-model.md) | schema、层级、属性与资源边界 |
 | [工具手册](tools.md) | 搜索、录入、索引重建、校验与批量维护 |
 

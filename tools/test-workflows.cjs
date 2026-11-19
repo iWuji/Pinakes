@@ -190,7 +190,7 @@ test('Standalone empty-vault Home opens all four native content pages and can cr
   await service.importPaper({ ...payload, file: null, dirName: '_unfiled' });
   await click(home, '阅读队列');
   const queue = f.app.workspace.activeLeaf.view; assert.equal(queue.entries.length, 1);
-  await click(queue, '刷这篇'); const reader = f.plugin.browseModal; await reader.opened;
+  await click(queue, '打开论文卡片'); const reader = f.plugin.browseModal; await reader.opened;
   assert.ok(reader.file.path.includes('imported')); await click(reader, '已读'); await reader.close();
   assert.equal(queue.list.children[0].tag, 'div', 'Read papers leave the active reading queue');
   await click(home, '专题研究'); const topic = f.app.workspace.activeLeaf.view;
@@ -222,8 +222,8 @@ test('Import dialog retains its form on async failure and closes only after a su
   assert.equal(inputs.find(i => i.placeholder === '英文原题').value, 'Dialog paper');
   modal.onSubmit = async (input) => createService(f).importPaper(input);
   await click(modal, '重试导入');
-  assert.ok(modal.contentEl.querySelectorAll('button').some(b => b.textContent === '打开笔记'));
-  await click(modal, '打开笔记'); assert.equal(modal.nativeClosed, true); assert.ok(f.app.openedFile.path.includes('dialog'));
+  assert.ok(modal.contentEl.querySelectorAll('button').some(b => b.textContent === '打开论文卡片'));
+  await click(modal, '打开论文卡片'); assert.equal(modal.nativeClosed, true); await f.plugin.browseModal.opened; assert.ok(f.plugin.browseModal.file.path.includes('dialog')); await f.plugin.browseModal.close();
 });
 test('Creating a research idea first still initializes a usable graph root for later paper import', async () => {
   const f = fixture(true); const service = createService(f);

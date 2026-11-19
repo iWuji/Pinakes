@@ -208,6 +208,7 @@ function createLibraryService({ app, plugin, model }) {
           folderPath, notePath, pdfPath, noteHash: hash(text), pdfHash: bytes ? hash(bytes) : null, direction: dir };
         await saveOperation(operation);
       }
+      const releaseActivity = plugin.guardActivity ? await plugin.guardActivity([notePath]) : async () => {};
       try {
         await mkdir(folderPath);
         if (pdfPath) {
@@ -221,13 +222,14 @@ function createLibraryService({ app, plugin, model }) {
         else if (hash(await vault.read(note)) !== operation.noteHash)
           throw new Error("这篇笔记已被修改，内容已保留，请打开已有笔记。" );
         await rebuildDirection(dir);
+        if (plugin.recordActivity) await plugin.recordActivity("added", "import:" + operation.id);
         await finishOperation(operation.id);
         return { notePath, pdfPath, folderPath };
       } catch (error) {
         const err = new Error(`导入未完成，表单内容已保留。可点击“重试导入”继续，或在首页恢复未完成操作。详情：${error.message}`);
         err.operationId = operation.id;
         throw err;
-      }
+      } finally { await releaseActivity(); }
     });
   }
   async function cancelImport(id) {
@@ -275,6 +277,7 @@ function createLibraryService({ app, plugin, model }) {
         (operation.pdfPath && hash(await vault.readBinary(fileAt(operation.pdfPath))) !== operation.pdfHash))
         throw new Error("文件已改变，已保留内容，请打开笔记检查。" );
       await rebuildDirection(operation.direction);
+      if (plugin.recordActivity) await plugin.recordActivity("added", "import:" + operation.id);
       await finishOperation(id);
     });
   }
@@ -451,11 +454,81 @@ function createLibraryService({ app, plugin, model }) {
       return results;
     });
   }
+  async function finishDelete(operation) {
+    if (fileAt(operation.folderPath)) throw new Error("论文文件夹仍存在，未自动删除。请回到论文列表确认后重试删除。");
+    const colors = plugin.settings.nodeColors || {};
+    for (const path of Object.keys(colors)) if (path === operation.folderPath || path.startsWith(operation.folderPath + "/")) delete colors[path];
+    plugin.settings.readingHistory = (plugin.settings.readingHistory || []).filter((entry) => !entry.path.startsWith(operation.folderPath + "/"));
+    await plugin.saveData(plugin.settings);
+    await rebuildDirection(operation.direction);
+    await finishOperation(operation.id);
+  }
+  async function deletePaper(notePath) {
+    return serial(async () => {
+      const state = await snapshot();
+      const node = state.index.nodes.get(notePath);
+      const folderPath = dirname(notePath);
+      const direction = dirname(folderPath);
+      if (!node || node.kind !== "paper" || dirname(direction) !== paperRoot(state.schema) ||
+        folderPath.split("/").pop() + ".md" !== notePath.split("/").pop())
+        throw new Error("这篇笔记不是独立论文文件夹，未删除。请先检查目录结构。");
+      const operations = await readJournal();
+      if (operations.some((o) => o.notePath === notePath || o.newNotePath === notePath || o.src === notePath || o.dst === notePath))
+        throw new Error("这篇论文有未完成操作，请先从首页恢复，再删除。");
+      const folder = fileAt(folderPath);
+      if (!folder || !Array.isArray(folder.children)) throw new Error("找不到论文文件夹，未删除。");
+      const id = randomUUID();
+      const backupDir = `${dirname(journalPath)}/backups/${id}/paper`;
+      await mkdir(backupDir, true);
+      const copied = [];
+      async function backup(current) {
+        for (const file of current.children || []) {
+          const relative = file.path.slice(folderPath.length + 1);
+          if (file.children) { await mkdir(`${backupDir}/${relative}`, true); await backup(file); }
+          else {
+            const bytes = await vault.readBinary(file);
+            await mkdir(dirname(`${backupDir}/${relative}`), true);
+            await vault.adapter.writeBinary(`${backupDir}/${relative}`, bytes);
+            if (hash(await vault.adapter.readBinary(`${backupDir}/${relative}`)) !== hash(bytes))
+              throw new Error("删除前备份校验失败，原文件未删除。");
+            copied.push({ path: file.path, digest: hash(bytes) });
+          }
+        }
+      }
+      await backup(folder);
+      const currentPaths = [];
+      function collect(current) { for (const file of current.children || []) { if (file.children) collect(file); else currentPaths.push(file.path); } }
+      collect(folder);
+      if (JSON.stringify(currentPaths.sort()) !== JSON.stringify(copied.map((entry) => entry.path).sort()))
+        throw new Error("备份时文件夹内容发生变化，未删除，请重试。");
+      for (const entry of copied) {
+        const file = fileAt(entry.path);
+        if (!file || hash(await vault.readBinary(file)) !== entry.digest) throw new Error("备份时文件发生变化，原文件未删除，请重试。");
+      }
+      const operation = { id, kind: "delete", notePath, folderPath, direction, backupDir, createdAt: new Date().toISOString() };
+      await saveOperation(operation);
+      try {
+        if (app.fileManager?.trashFile) await app.fileManager.trashFile(folder);
+        else await vault.trash(folder, true);
+      } catch (error) {
+        if (fileAt(folderPath)) {
+          await finishOperation(id);
+          throw new Error(`删除失败，论文文件夹仍保留，可以重试。详情：${error.message}`);
+        }
+      }
+      try { await finishDelete(operation); }
+      catch (error) {
+        return { deleted: true, backupDir, warning: `论文已移到回收站，但索引或记录更新未完成。请从首页恢复操作。详情：${error.message}` };
+      }
+      return { deleted: true, backupDir, warning: null };
+    });
+  }
   async function recoverOperation(id) {
     return serial(async () => {
       const operation = (await readJournal()).find((o) => o.id === id);
       if (!operation) return;
-      if (operation.kind === "move") await finishMove(operation);
+      if (operation.kind === "delete") await finishDelete(operation);
+      else if (operation.kind === "move") await finishMove(operation);
       else if (operation.kind === "pdf") {
         if (operation.stage === "committed") await finishOperation(id); else await restorePdf(operation);
       } else throw new Error("请使用对应类型的恢复操作。");
@@ -463,7 +536,7 @@ function createLibraryService({ app, plugin, model }) {
   }
   return { schema, snapshot, directions, ensurePaperStructure, rebuildDirection, reverseRelation, importPaper,
     pendingOperations: readJournal, recoverRelations, cancelImport, finishImport, createResearchNote,
-    replacePdf, movePaper, movePapers, recoverOperation };
+    replacePdf, movePaper, movePapers, deletePaper, recoverOperation };
 }
 
 module.exports = { createLibraryService };

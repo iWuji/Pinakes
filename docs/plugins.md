@@ -23,7 +23,7 @@ Pinakes 本身不依赖其他第三方插件。完整研究库中的看板、模
 | [Templater](https://github.com/silentvoid13/Templater) | 2.25.1 | 1.13.0 | **模板依赖**：执行 `_templates/论文笔记.md` 中的提示、字段生成与文件整理逻辑 |
 | [QuickAdd](https://github.com/chhoumann/quickadd) | 2.32.0 | 1.13.0 | 快速新建笔记；随包「新建论文笔记」配置使用上述模板，需配合 Templater。Pinakes 自带导入入口不依赖它 |
 | [PDF++](https://github.com/ryotaushio/obsidian-pdf-plus) | 0.40.31 | 1.5.8 | 增强 PDF 阅读、批注和引用；Obsidian 的基本 PDF 阅读与 Pinakes 的导入不依赖它 |
-| [Omnisearch](https://github.com/scambier/obsidian-omnisearch) | 1.31.0 | 1.13.3 | 增强全文搜索；可使用 Obsidian 内置搜索替代 |
+| [Omnisearch](https://github.com/scambier/obsidian-omnisearch) | 1.31.0 | 1.13.3 | 增强全文搜索；启用时首页通过公开 API 合并论文候选，未启用时 Pinakes 内置模糊搜索照常使用 |
 | [Front Matter Title](https://github.com/snezhig/obsidian-front-matter-title) | 4.2.1 | 1.12.0 | 用 frontmatter 的标题改善文件列表、搜索等位置的显示；Pinakes 自己读取 `title` |
 | [Advanced Tables](https://github.com/tgrosinger/advanced-tables-obsidian) | 0.23.2 | 1.0.0 | Markdown 表格编辑与格式整理；方向索引重建不依赖它 |
 | [Latex Suite](https://github.com/artisticat1/obsidian-latex-suite) | 1.14.1 | 1.1.0 | 公式输入、片段与自动展开；数学公式渲染由 Obsidian 内置 MathJax 提供 |

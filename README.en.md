@@ -62,6 +62,10 @@ The paper library, reading queue, topics, and ideas use native lists and work wi
 
 Home supports search and resuming your last paper. Lists also support attaching or replacing PDFs and archiving multiple papers. PDF replacement keeps a backup, archive results are reported per paper, and reading history follows moved notes.
 
+Home search offers fuzzy matching and live paper suggestions. When Omnisearch is enabled, Home merges its public API results; otherwise the built-in search works on its own.
+
+Home also includes a daily activity grid for adding papers, changing status, and editing notes. Darker squares indicate more saved actions. History is local and starts when tracking is enabled.
+
 ## Get started
 
 The current plugin interface and detailed project guides are primarily in Chinese. The steps below include the Chinese labels you will see in Obsidian.

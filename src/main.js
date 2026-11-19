@@ -20,6 +20,8 @@ let adapters = null;
 try { adapters = require("./adapters.js"); } catch (e) { adapters = null; }
 const { createLibraryService } = require("./library-service.js");
 const { createReadingSession } = require("./reading-session.js");
+const { createPaperSearch, prepareSearchEntry, searchEntries } = require("./paper-search.js");
+const { createActivityLog, activityCalendar, shiftDay } = require("./activity-log.js");
 
 // 主图仍以 docs/pinakes-cover.svg 为真源；构建时内嵌，安装不增加附件。
 let homeArtwork = null;
@@ -766,12 +768,20 @@ function buildPaperNote({ dirName, year, slug, title, tags, summary, authors, pd
     ...(abstract ? ["> [!abstract] 原摘要", ...abstract.split(/\n+/).map((l) => "> " + l), ""] : []),
     "## 整体综述",
     "",
-    "（自由记录：这篇在解什么问题、关键机制、值不值得深读。下面几节只是起步建议，随意增删改名。）",
+    "<!-- 简要解释问题、关键方法与主要结论。未读原文时留空。 -->",
     "",
-    "## 论文信息",
+    "## 论文细节",
+    "",
+    "### 论文信息",
     `- 标题：${title || slug}`,
     `- 年份：${year}`,
     pdfName ? `- 原文：[${pdfName}](${pdfName})` : "- 原文：待补",
+    "",
+    "<!-- 方法、公式、实验与原文依据写在这里，用三级标题组织。 -->",
+    "",
+    "## 阅读随记",
+    "",
+    "<!-- 留给自己的理解、疑问和启发；没有个人记录时保持空白。 -->",
     "",
     "## 路径",
     `- [返回方向页](../【索引】${dirName}.md)`,
@@ -1092,19 +1102,34 @@ function browseNoteSnapshot(text) {
     if (!heading) continue;
     const title = heading[2].replace(/[ \t]+#+[ \t]*$/, "");
     const name = title.replace(/\*\*|__/g, "").replace(/^(?:\d+[.、．)]|[一二三四五六七八九十]+[、.．])[ \t]*/, "").trim().toLowerCase();
-    const key = /^(整体综述|overview)$/.test(name) ? "overview"
-      : /^(notes?|笔记|个人笔记|我的笔记|阅读笔记|我的批注(?:与\s*open debates)?)$/.test(name) ? "notes" : null;
-    headings.push({ key, title, level: heading[1].length,
+    const key = /^(整体综述|整体概括|论文概览|overview)$/.test(name) ? "overview"
+      : /^(阅读随记|个人理解|notes?|笔记|个人笔记|我的笔记|阅读笔记|我的批注(?:与\s*open debates)?)$/.test(name) ? "notes" : null;
+    headings.push({ key, name, title, level: heading[1].length,
       start: offset + line.index, contentStart: offset + line.index + line[0].length });
   }
-  const result = {};
+  for (const section of headings) {
+    const next = headings.find((h) => h.start > section.start && (h.key || h.level <= section.level));
+    section.end = next ? next.start : text.length;
+    section.content = text.slice(section.contentStart, section.end);
+  }
+  const result = { legacyDetailedNotes: false };
   for (const key of ["overview", "notes"]) {
-    const matches = headings.filter((h) => h.key === key);
+    let matches = headings.filter((h) => h.key === key);
+    if (key === "notes") {
+      const personal = matches.filter((h) => /^(阅读随记|个人理解)$/.test(h.name));
+      if (personal.length) matches = personal;
+      else {
+        matches = matches.filter((h) => {
+          const detailed = /^(notes?|笔记|阅读笔记)$/.test(h.name) && headings.some((sub) =>
+            sub.start > h.start && sub.start < h.end && sub.level > h.level &&
+            /^(?:论文信息|背景(?:与动机)?|问题设定|问题与动机|方法(?:与实验设计)?|核心方法(?:与创新)?|核心机制|训练(?:与推理|目标)?|实验(?:与结论|关键结果|结果|设计)?|公式|problem setting|methods?|experiments?|training|results)(?:\s|$|[：:])/.test(sub.name));
+          if (detailed) result.legacyDetailedNotes = true;
+          return !detailed;
+        });
+      }
+    }
     const section = matches[0];
     if (section) {
-      const next = headings.find((h) => h.start > section.start && (h.key || h.level <= section.level));
-      section.end = next ? next.start : text.length;
-      section.content = text.slice(section.contentStart, section.end);
       section.ambiguous = matches.length > 1;
     }
     result[key] = section ? section.content : "";
@@ -1112,6 +1137,8 @@ function browseNoteSnapshot(text) {
   }
   return result;
 }
+
+function hasReadableSection(content) { return !!String(content || "").replace(/<!--[\s\S]*?-->/g, "").trim(); }
 
 /** 仅替换编辑过的章节，允许其他章节、属性和关系同时被外部修改。 */
 function patchBrowseNote(text, base, draft) {
@@ -1121,7 +1148,7 @@ function patchBrowseNote(text, base, draft) {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   for (const key of ["overview", "notes"]) {
     if (draft[key] === base[key]) continue;
-    const label = key === "overview" ? "整体综述" : "Notes";
+    const label = key === "overview" ? "整体综述" : "阅读随记";
     const section = latest[key + "Section"];
     if ((base[key + "Section"] && base[key + "Section"].ambiguous) || (section && section.ambiguous))
       throw new Error(`找到多个“${label}”章节，请打开完整笔记确认要修改哪一处。`);
@@ -1129,7 +1156,11 @@ function patchBrowseNote(text, base, draft) {
       throw new Error(`${label}已在其他地方修改。这里的内容已保留，请先复制，再点“重新载入”查看最新笔记。`);
     const content = draft[key].replace(/\r?\n/g, eol).replace(/(?:\r?\n)*$/, "");
     if (section) changes.push({ start: section.contentStart, end: section.end, value: eol + content + eol + eol });
-    else if (content.trim()) appended.push("## " + label + eol + eol + content + eol);
+    else if (content.trim()) {
+      const navigation = text.search(/^##[ \t]+路径[ \t]*\r?$/m);
+      if (navigation >= 0) changes.push({ start: navigation, end: navigation, value: "## " + label + eol + eol + content + eol + eol });
+      else appended.push("## " + label + eol + eol + content + eol);
+    }
   }
   for (const change of changes.sort((a, b) => b.start - a.start))
     text = text.slice(0, change.start) + change.value + text.slice(change.end);
@@ -1602,6 +1633,23 @@ function createPlugin(obsidian) {
   function readingSession(plugin) {
     if (!plugin.readingSession) plugin.readingSession = createReadingSession(plugin);
     return plugin.readingSession;
+  }
+
+  function paperSearch(plugin) {
+    if (!plugin.paperSearch) plugin.paperSearch = createPaperSearch({ vault: plugin.app.vault,
+      schema: () => libraryService(plugin).schema(), parseFrontmatter, kindOfPath, fallbackSchema: DEFAULT_SCHEMA,
+      extractOverview: content => browseNoteSnapshot(content).overview,
+      getOmnisearch: () => globalThis.omnisearch || (typeof window !== "undefined" ? window.omnisearch : null) });
+    return plugin.paperSearch;
+  }
+
+  function activityLog(plugin) {
+    if (!plugin.activityLog) plugin.activityLog = createActivityLog({ vault: plugin.app.vault,
+      schema: () => libraryService(plugin).schema(), model: { parseFrontmatter, kindOfPath },
+      onChange: () => {
+        for (const leaf of plugin.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) leaf.view.refreshActivity?.();
+      }, onError: error => plugin.reportActivityError(error) });
+    return plugin.activityLog;
   }
 
   function styleModal(modal) {
@@ -2404,11 +2452,11 @@ function createPlugin(obsidian) {
       const acts = this.cardBodyEl.createDiv({ cls: "pnx-card-acts" });
       const btnOpen = acts.createEl("button");
       btnOpen.addClass("is-primary");     // 主操作:按钮样式与上面的芯片区分开
-      btnOpen.setText("打开笔记");
+      btnOpen.setText(node.kind === "paper" ? "打开论文卡片" : "打开笔记");
       btnOpen.addEventListener("click", () => this.openNote(node));
       if (node.kind === "paper") {
-        const pdf = acts.createEl("button"); pdf.setText("补充／替换 PDF");
-        pdf.addEventListener("click", () => this.plugin.openPdfDialog(node.path));
+        const note = acts.createEl("button"); note.setText("打开论文笔记");
+        note.addEventListener("click", () => this.plugin.openPaperNote(this.app.vault.getAbstractFileByPath(node.path)));
       }
       // 「进入」= 把这个节点选为画布中心,子图与左树点击完全一致(2026-10-27 定稿:
       // 索引 = 整棵子树 + 幽灵,叶子 = ego 图)。与「回到上层」成一对:进 / 回。
@@ -2481,6 +2529,7 @@ function createPlugin(obsidian) {
       if (!(file instanceof TFile)) return;
       try {
         await this.app.vault.process(file, (text) => patchScalarField(text, field, value));
+        await this.plugin.trackActivityFile(file);
         if (field === "reading") node.reading = value || READING_UNREAD;
         else if (field === STAGE_FIELD) node.stage = value || IDEA_STAGES[0].key;
         else if (field === "importance") node.importance = value || IMPORTANCE_MIN;
@@ -2506,6 +2555,7 @@ function createPlugin(obsidian) {
       try {
         await this.app.vault.process(file, (text) =>
           patchTags(text, on ? { add: tag } : { remove: tag }));
+        await this.plugin.trackActivityFile(file);
         node.tags = on ? [...(node.tags || []), tag] : (node.tags || []).filter((t) => t !== tag);
         if (on && !this.plugin.settings.tagColors[tag]) {
           this.plugin.settings.tagColors[tag] = this.tagColor(tag);
@@ -2786,6 +2836,7 @@ function createPlugin(obsidian) {
     async openNote(node) {
       const f = this.app.vault.getAbstractFileByPath(node.path);
       if (!(f instanceof TFile)) return;
+      if (node.kind === "paper") { this.plugin.openBrowse(node.path); return; }
       // 复用最近打开过这篇笔记的 tab;没有就开新 tab,不每次都切分屏
       const leaves = this.app.workspace.getLeavesOfType("markdown");
       const existing = leaves.find((l) => l.getViewState().state && l.getViewState().state.file === node.path);
@@ -2947,7 +2998,7 @@ function createPlugin(obsidian) {
       menu.createDiv({ cls: "pnx-menu-title" }).setText(truncate(node.title || node.basename, 34));
 
       // 打开
-      this.menuRow(menu, "file-text", "打开笔记", () => { this.closeMenu(); this.openNote(node); });
+      this.menuRow(menu, "file-text", node.kind === "paper" ? "打开论文卡片" : "打开笔记", () => { this.closeMenu(); this.openNote(node); });
       if (node.path.endsWith(".md")) {
         this.menuRow(menu, "file-plus", "在新标签页打开", async () => {
           this.closeMenu();
@@ -3483,10 +3534,10 @@ function createPlugin(obsidian) {
         await this.ensureUnfiled();
         const retry = this.directionOptions();
         if (!retry.length) { new Notice(`${this.paperRoot()}/ 下没有方向索引,先新建一个方向`); return; }
-        new AddPaperModal(this.app, retry, (payload) => this.addPaperFromPdf(payload), opts).open();
+        new AddPaperModal(this.app, retry, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: path => this.plugin.openBrowse(path) }).open();
         return;
       }
-      new AddPaperModal(this.app, dirs, (payload) => this.addPaperFromPdf(payload), opts).open();
+      new AddPaperModal(this.app, dirs, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: path => this.plugin.openBrowse(path) }).open();
     }
 
     /** 待归档分区不存在时补一个(空库自举的第二段;有就不动)。 */
@@ -3538,11 +3589,19 @@ function createPlugin(obsidian) {
         "",
         "## 整体综述",
         "",
-        "(自由记录:这篇在解什么问题、关键机制、值不值得深读。下面几节只是起步建议,随意增删改名。)",
+        "<!-- 简要解释问题、关键方法与主要结论。未读原文时留空。 -->",
         "",
-        "## 论文信息",
+        "## 论文细节",
+        "",
+        "### 论文信息",
         `- 标题:${slug}`,
         `- 年份:${year}`,
+        "",
+        "<!-- 方法、公式、实验与原文依据写在这里，用三级标题组织。 -->",
+        "",
+        "## 阅读随记",
+        "",
+        "<!-- 留给自己的理解、疑问和启发；没有个人记录时保持空白。 -->",
         "",
         "## 路径",
         `- [返回方向页](../【索引】${dirName}.md)`,
@@ -3551,6 +3610,7 @@ function createPlugin(obsidian) {
       try {
         await this.app.vault.createFolder(`${dirPath}/${folderName}`);
         await this.app.vault.create(`${dirPath}/${folderName}/${folderName}.md`, note);
+        await this.plugin.trackActivityFile(this.app.vault.getAbstractFileByPath(`${dirPath}/${folderName}/${folderName}.md`), true);
       } catch (err) {
         new Notice(`创建失败:${err.message}`); return;
       }
@@ -4632,7 +4692,7 @@ function createPlugin(obsidian) {
     async openAddPaper(opts = {}) {
       const state = await libraryService(this.plugin).ensurePaperStructure();
       const directions = libraryService(this.plugin).directions(state);
-      const modal = new AddPaperModal(this.app, directions, (payload) => this.addPaperFromPdf(payload), opts);
+      const modal = new AddPaperModal(this.app, directions, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: path => this.plugin.openBrowse(path) });
       modal.open();
       return modal;
     }
@@ -4683,9 +4743,46 @@ function createPlugin(obsidian) {
       setIcon(refresh, "refresh-cw");
       refresh.addEventListener("click", () => this.refresh());
       const search = this.page.createEl("form", { cls: "pnx-home-search" });
-      this.search = search.createEl("input", { type: "search", placeholder: "搜索论文、标签或简介", attr: { "aria-label": "搜索论文库" } });
+      this.searchWrap = search.createDiv({ cls: "pnx-home-search-field" });
+      const searchId = "pnx-search-" + Math.random().toString(36).slice(2);
+      this.search = this.searchWrap.createEl("input", { type: "search", placeholder: "搜索论文、标签或笔记内容", attr: {
+        "aria-label": "搜索论文库", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": searchId, autocomplete: "off",
+      } });
+      this.suggestions = this.searchWrap.createDiv({ cls: "pnx-search-suggestions", attr: { id: searchId, role: "listbox", "aria-label": "推荐论文" } });
+      this.suggestions.hide();
+      this.searchAnnouncement = this.searchWrap.createDiv({ cls: "pnx-search-announcement", attr: { role: "status", "aria-live": "polite" } });
+      this.searchResults = []; this.searchActive = -1; this.searchVersion = 0; this.composing = false;
+      this.search.addEventListener("input", () => { if (!this.composing) this.scheduleSuggestions(); });
+      this.search.addEventListener("focus", () => { if (this.search.value.trim()) this.scheduleSuggestions(); });
+      this.search.addEventListener("compositionstart", () => { this.composing = true; this.closeSuggestions(); });
+      this.search.addEventListener("compositionend", () => { this.composing = false; this.scheduleSuggestions(); });
+      this.search.addEventListener("blur", (event) => {
+        if (!this.suggestions.contains(event.relatedTarget)) this.closeSuggestions();
+      });
+      this.suggestions.addEventListener("focusout", (event) => {
+        if (event.relatedTarget !== this.search && !this.suggestions.contains(event.relatedTarget)) this.closeSuggestions();
+      });
+      this.contentEl.addEventListener("scroll", () => {
+        if (this.search.getAttribute("aria-expanded") === "true") this.fitSuggestions();
+      });
+      this.search.addEventListener("keydown", (event) => {
+        if (event.isComposing || this.composing || event.keyCode === 229) return;
+        if (event.key === "Escape") { event.preventDefault(); this.closeSuggestions(); }
+        else if (["ArrowDown", "ArrowUp"].includes(event.key) && this.searchResults.length) {
+          event.preventDefault();
+          this.searchActive = event.key === "ArrowDown" ? (this.searchActive + 1) % this.searchResults.length
+            : (this.searchActive < 0 ? this.searchResults.length - 1 : (this.searchActive - 1 + this.searchResults.length) % this.searchResults.length);
+          this.updateSearchActive();
+        } else if (event.key === "Enter" && this.searchActive >= 0 && this.searchResults[this.searchActive]) {
+          event.preventDefault(); this.openSearchResult(this.searchResults[this.searchActive]);
+        }
+      });
       const find = search.createEl("button", { attr: { type: "submit" } }); find.setText("搜索");
-      search.addEventListener("submit", (event) => { event.preventDefault(); return this.perform(() => this.plugin.activateLibrary("papers", { q: this.search.value.trim() })); });
+      search.addEventListener("submit", (event) => {
+        event.preventDefault(); if (this.composing) return;
+        this.closeSuggestions();
+        return this.perform(() => this.plugin.activateLibrary("papers", { q: this.search.value.trim() }));
+      });
       this.continueEl = this.page.createDiv({ cls: "pnx-home-continue" });
       this.featured = this.page.createDiv({ cls: "pnx-home-featured", attr: { "aria-live": "polite" } });
       this.featured.createEl("p").setText("正在挑一篇论文…");
@@ -4705,6 +4802,8 @@ function createPlugin(obsidian) {
       feature("book-open", "专题研究", "围绕一个问题，整理多篇论文的发现", () => this.plugin.activateLibrary("topic"));
       feature("lightbulb", "研究想法", "留下新的想法，逐步形成研究方案", () => this.plugin.activateLibrary("idea"));
       feature("layout-list", "论文库", "浏览已收录的论文，回看已有笔记", () => this.plugin.activateLibrary("papers"));
+      this.activityEl = this.page.createEl("section", { cls: "pnx-activity", attr: { "aria-label": "研究活跃度" } });
+      this.activityVersion = 0;
       const tools = this.page.createDiv({ cls: "pnx-home-utilities" });
       for (const [label, action] of [
         ["检查资源", () => this.libraryAction((library) => library.showUnreachable())],
@@ -4720,11 +4819,160 @@ function createPlugin(obsidian) {
         if (leaf && leaf.view === this && !this.suppressFocusRefresh) this.refresh();
       }));
       await this.refresh();
+      await this.refreshActivity();
     }
 
     async perform(action) {
       try { await action(); }
       catch (error) { if (!this.closed) this.message.setText(error.message); new Notice("Pinakes:" + error.message); }
+    }
+
+    async refreshActivity() {
+      const version = ++this.activityVersion;
+      if (this.closed || !this.activityEl) return;
+      try {
+        const data = await activityLog(this.plugin).snapshot();
+        if (this.closed || version !== this.activityVersion) return;
+        const calendar = activityCalendar(data);
+        this.activityEl.empty();
+        const header = this.activityEl.createDiv({ cls: "pnx-activity-header" });
+        header.createEl("h2").setText("研究足迹");
+        const summary = header.createSpan({ cls: "pnx-activity-summary" });
+        summary.setText(`近一年 ${calendar.total} 次记录 · ${calendar.activeDays} 天活跃`);
+        const subline = this.activityEl.createDiv({ cls: "pnx-activity-subline" });
+        subline.createSpan().setText("添加论文、修改状态、编辑笔记，留下每天的积累。");
+        subline.createSpan().setText(`今天 ${calendar.todayCount} 次 · 连续 ${calendar.streak} 天`);
+        const scroll = this.activityEl.createDiv({ cls: "pnx-activity-scroll" });
+        const chart = scroll.createDiv({ cls: "pnx-activity-chart" });
+        const monthLabels = chart.createDiv({ cls: "pnx-activity-months", attr: { "aria-hidden": "true" } });
+        monthLabels.style.gridTemplateColumns = `repeat(${calendar.weeks.length}, 12px)`;
+        for (const month of calendar.months) {
+          const label = monthLabels.createSpan(); label.setText(month.month + "月"); label.style.gridColumn = String(month.week + 1);
+        }
+        const rows = chart.createDiv({ cls: "pnx-activity-rows" });
+        const weekdays = rows.createDiv({ cls: "pnx-activity-weekdays", attr: { "aria-hidden": "true" } });
+        for (const text of ["一", "", "三", "", "五", "", "日"]) weekdays.createSpan().setText(text);
+        const grid = rows.createDiv({ cls: "pnx-activity-grid", attr: { role: "group", "aria-label": "最近一年每天的活跃记录" } });
+        const buttons = new Map();
+        const textFor = cell => !cell.tracked ? `${cell.day}：尚无统计，从 ${calendar.startedOn} 开始记录。` :
+          `${cell.day}：${cell.count} 次记录（添加论文 ${cell.added}，修改状态 ${cell.status}，编辑笔记 ${cell.edited}）`;
+        for (const week of calendar.weeks) {
+          const column = grid.createDiv({ cls: "pnx-activity-week" });
+          for (const cell of week) {
+            if (!cell.inRange) { column.createSpan({ cls: "pnx-activity-day is-outside", attr: { "aria-hidden": "true" } }); continue; }
+            const button = column.createEl("button", { cls: "pnx-activity-day", attr: {
+              type: "button", "data-level": String(cell.level), "data-date": cell.day,
+              "aria-label": textFor(cell), title: textFor(cell), tabindex: cell.day === calendar.today ? "0" : "-1",
+            } });
+            if (cell.day === calendar.today) { button.addClass("is-today"); button.setAttribute("aria-current", "date"); }
+            buttons.set(cell.day, button);
+            const select = () => {
+              for (const [day, item] of buttons) item.setAttribute("tabindex", day === cell.day ? "0" : "-1");
+            };
+            button.addEventListener("focus", select); button.addEventListener("click", select);
+            button.addEventListener("keydown", event => {
+              const delta = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
+              const next = event.key === "Home" ? calendar.first : event.key === "End" ? calendar.today :
+                delta !== undefined ? shiftDay(cell.day, delta) : null;
+              if (next) { event.preventDefault(); buttons.get(next)?.focus(); }
+            });
+          }
+        }
+        scroll.scrollLeft = scroll.scrollWidth;
+      } catch (error) {
+        if (!this.closed && version === this.activityVersion) {
+          this.activityEl.empty(); this.activityEl.createEl("p").setText("活跃度暂时无法读取：" + error.message);
+        }
+      }
+    }
+
+    scheduleSuggestions() {
+      this.closeSuggestions();
+      if (!this.search.value.trim()) return;
+      this.searchTimer = setTimeout(() => { this.searchTimer = null; this.refreshSuggestions(); }, 100);
+    }
+
+    async refreshSuggestions() {
+      const query = this.search.value.trim(), version = ++this.searchVersion;
+      const current = () => !this.closed && !this.composing && version === this.searchVersion && query === this.search.value.trim();
+      if (!query) { this.closeSuggestions(); return; }
+      try {
+        const engine = paperSearch(this.plugin);
+        const local = await engine.suggest(query, 6, false);
+        if (!current()) return;
+        this.renderSuggestions(local, query);
+        const enhanced = await engine.suggest(query, 6, true);
+        if (current() && enhanced.source === "omnisearch") this.renderSuggestions(enhanced, query);
+      } catch (error) {
+        if (current()) {
+          this.searchResults = []; this.searchActive = -1; this.suggestions.empty();
+          this.suggestions.createDiv({ cls: "pnx-search-empty" }).setText("搜索暂时不可用，可以点击搜索进入论文库重试。");
+          this.suggestions.show(); this.search.setAttribute("aria-expanded", "true");
+        }
+      }
+    }
+
+    renderSuggestions(response, query) {
+      const selectedPath = this.searchResults[this.searchActive]?.path;
+      this.searchResults = response.results;
+      this.searchActive = selectedPath ? this.searchResults.findIndex((entry) => entry.path === selectedPath) : -1;
+      this.suggestions.empty();
+      const label = this.suggestions.createDiv({ cls: "pnx-search-heading", attr: { role: "presentation" } });
+      label.setText(response.source === "omnisearch" ? "匹配论文 · Omnisearch" : "匹配论文");
+      if (!this.searchResults.length) this.suggestions.createDiv({ cls: "pnx-search-empty", attr: { role: "presentation" } })
+        .setText("没有找到匹配论文，试试标题缩写或方法关键词。");
+      for (let index = 0; index < this.searchResults.length; index++) {
+        const entry = this.searchResults[index];
+        const row = this.suggestions.createEl("button", { cls: "pnx-search-option", attr: {
+          type: "button", role: "option", id: this.suggestions.id + "-" + index, "aria-selected": "false", tabindex: "-1",
+        } });
+        row.createEl("b").setText(entry.title);
+        const infoLine = [entry.year, entry.reading, ...entry.tags.slice(0, 3)].filter(Boolean).join(" · ");
+        row.createSpan({ cls: "pnx-search-option-meta" }).setText(infoLine);
+        if (entry.excerpt) row.createSpan({ cls: "pnx-search-option-excerpt" }).setText(entry.excerpt);
+        row.addEventListener("pointerdown", (event) => event.preventDefault());
+        row.addEventListener("mouseenter", () => { this.searchActive = index; this.updateSearchActive(); });
+        row.addEventListener("click", () => this.openSearchResult(entry));
+      }
+      this.suggestions.show(); this.search.setAttribute("aria-expanded", "true");
+      this.fitSuggestions();
+      this.searchAnnouncement.setText(`${this.searchResults.length} 篇推荐论文，可用上下键选择，回车打开。`);
+      this.updateSearchActive();
+    }
+
+    fitSuggestions() {
+      const win = this.search.ownerDocument?.defaultView;
+      if (!win || !this.search.getBoundingClientRect || !this.contentEl.getBoundingClientRect) return;
+      const input = this.search.getBoundingClientRect(), page = this.contentEl.getBoundingClientRect();
+      const bottom = Math.min(page.bottom, win.innerHeight || page.bottom);
+      const below = bottom - input.bottom - 16;
+      const above = input.top - Math.max(0, page.top) - 16;
+      const upwards = below < 130 && above > below;
+      this.suggestions.style.top = upwards ? "auto" : "calc(100% + 7px)";
+      this.suggestions.style.bottom = upwards ? "calc(100% + 7px)" : "auto";
+      this.suggestions.style.maxHeight = Math.max(80, Math.min(420, upwards ? above : below)) + "px";
+    }
+
+    updateSearchActive() {
+      const rows = this.suggestions.querySelectorAll("button");
+      rows.forEach((row, index) => { row.toggleClass("is-active", index === this.searchActive); row.setAttribute("aria-selected", String(index === this.searchActive)); });
+      const row = rows[this.searchActive];
+      if (row) { this.search.setAttribute("aria-activedescendant", row.id); row.scrollIntoView?.({ block: "nearest" }); }
+      else this.search.removeAttribute("aria-activedescendant");
+    }
+
+    openSearchResult(entry) {
+      this.closeSuggestions();
+      if (!this.app.vault.getAbstractFileByPath(entry.path)) { this.message.setText("这篇论文已移动或删除，请重新搜索。"); paperSearch(this.plugin).invalidate(); return; }
+      this.plugin.openBrowse(entry.path);
+    }
+
+    closeSuggestions() {
+      ++this.searchVersion;
+      if (this.searchTimer) { clearTimeout(this.searchTimer); this.searchTimer = null; }
+      this.searchResults = []; this.searchActive = -1;
+      this.suggestions?.hide(); this.search?.setAttribute("aria-expanded", "false");
+      this.search?.removeAttribute("aria-activedescendant");
     }
 
     async libraryAction(action) {
@@ -4798,7 +5046,7 @@ function createPlugin(obsidian) {
           this.featured.createDiv({ cls: "pnx-home-paper-meta" }).setText(infoLine);
           const overview = browseNoteSnapshot(text).overview;
           const preview = this.featured.createDiv({ cls: "pnx-home-paper-preview markdown-rendered" });
-          if (overview.trim()) {
+          if (hasReadableSection(overview)) {
             this.previewComponent = this.plugin.addChild(new Component());
             await MarkdownRenderer.render(this.app, overview, preview, paper.path, this.previewComponent);
           } else preview.createEl("p").setText(fm.summary || "这篇还没有综述，打开笔记看看吧。" );
@@ -4825,7 +5073,7 @@ function createPlugin(obsidian) {
       if (this.previewComponent) this.plugin.removeChild(this.previewComponent);
       this.previewComponent = null;
     }
-    onClose() { this.closed = true; ++this.refreshVersion; this.clearPreview(); this.contentEl.empty(); }
+    onClose() { this.closed = true; this.closeSuggestions(); ++this.refreshVersion; this.clearPreview(); this.contentEl.empty(); }
   }
 
   /** Native collection view. Works without templates, Dataview, or pre-created index notes. */
@@ -4908,8 +5156,8 @@ function createPlugin(obsidian) {
         this.entries = state.records.map((r) => {
           const fm = parseFrontmatter(r.content);
           const node = state.index.nodes.get(r.path);
-          return { ...r, fm, node, kind: fm.kind || kindOfPath(state.schema, r.path),
-            title: fm.title || r.basename, direction: node && node.parent ? state.index.nodes.get(node.parent)?.title || "" : "" };
+          return prepareSearchEntry({ ...r, fm, node, kind: fm.kind || kindOfPath(state.schema, r.path),
+            title: fm.title || r.basename, direction: node && node.parent ? state.index.nodes.get(node.parent)?.title || "" : "" });
         }).filter((r) => r.kind === (this.mode === "topic" ? "topic" : this.mode === "idea" ? "idea" : "paper"));
         const paths = new Set(this.entries.map((r) => r.path));
         for (const path of this.selectedPapers) if (!paths.has(path)) this.selectedPapers.delete(path);
@@ -4933,15 +5181,17 @@ function createPlugin(obsidian) {
       if (!this.entries) return;
       const f = this.filters;
       const q = f.q.trim().toLowerCase();
+      const ranked = searchEntries(this.entries, q);
+      const scores = new Map(ranked.map(({ entry, score }) => [entry.path, score]));
       const entries = this.entries.filter((r) => {
         const reading = r.fm.reading || READING_UNREAD;
-        return (!q || [r.title, r.basename, r.fm.summary, ...(r.fm.tags || [])].join(" ").toLowerCase().includes(q)) &&
+        return (!q || scores.has(r.path)) &&
           (!f.reading || (f.reading === "active" ? [READING_UNREAD, "在读"].includes(reading) : reading === f.reading)) &&
           (!f.year || String(r.fm.year) === f.year) && (!f.direction || r.direction === f.direction) &&
           (!f.importance || (f.importance === "none" ? r.fm.importance == null : String(r.fm.importance) === f.importance)) &&
           (!f.tag || (r.fm.tags || []).includes(f.tag));
-      }).sort((a, b) => f.sort === "title" ? a.title.localeCompare(b.title) :
-        (f.sort === "importance" ? (b.fm.importance || 0) - (a.fm.importance || 0) : Number(b.fm.year || 0) - Number(a.fm.year || 0)) || a.title.localeCompare(b.title));
+      }).sort((a, b) => (q ? (scores.get(b.path) || 0) - (scores.get(a.path) || 0) : 0) || (f.sort === "title" ? a.title.localeCompare(b.title) :
+        (f.sort === "importance" ? (b.fm.importance || 0) - (a.fm.importance || 0) : Number(b.fm.year || 0) - Number(a.fm.year || 0)) || a.title.localeCompare(b.title)));
       this.visibleEntries = entries;
       this.batchBar.toggle(["papers", "queue"].includes(this.mode));
       this.selectionLabel.setText(`已选 ${this.selectedPapers.size} 篇`);
@@ -4970,7 +5220,7 @@ function createPlugin(obsidian) {
         if (entry.fm.summary) row.createEl("p").setText(entry.fm.summary);
         const actions = row.createDiv({ cls: "pnx-library-row-actions" });
         if (entry.kind === "paper") {
-          const read = actions.createEl("button"); read.setText("刷这篇"); read.addEventListener("click", () => this.plugin.openBrowse(entry.path));
+          const read = actions.createEl("button"); read.setText("打开论文卡片"); read.addEventListener("click", () => this.plugin.openBrowse(entry.path));
           const state = actions.createEl("select", { attr: { "aria-label": `修改 ${entry.title} 的阅读状态` } });
           for (const item of this.plugin.readingOptions()) state.createEl("option", { text: item.label, attr: { value: item.value } });
           state.value = entry.fm.reading || READING_UNREAD;
@@ -4981,11 +5231,17 @@ function createPlugin(obsidian) {
           }
           const attach = actions.createEl("button"); attach.setText(rawPdf ? "替换 PDF" : "补充 PDF");
           attach.addEventListener("click", () => this.plugin.openPdfDialog(entry.path));
+          const remove = actions.createEl("button", { cls: "pnx-delete-paper" }); remove.setText("删除论文");
+          remove.addEventListener("click", () => this.plugin.openDeletePaper(entry.path));
         }
       }
     }
     openFile(path) { return this.run(async () => { const file = this.app.vault.getAbstractFileByPath(path); if (!file) throw new Error("文件已移动，请刷新列表。" );
-      if (file.extension === "md") await this.plugin.openPaperNote(file);
+      if (file.extension === "md") {
+        const fm = parseFrontmatter(await this.app.vault.read(file));
+        if ((fm.kind || kindOfPath(this.state?.schema || DEFAULT_SCHEMA, file.path)) === "paper") this.plugin.openBrowse(file.path);
+        else await this.plugin.openPaperNote(file);
+      }
       else await this.app.workspace.getLeaf("tab").openFile(file);
     }); }
     async openArchive() {
@@ -5100,6 +5356,7 @@ function createPlugin(obsidian) {
       this.directions = directions;
       this.onSubmit = onSubmit;
       this.allowNoPdf = !!opts.allowNoPdf;
+      this.openPaper = opts.openPaper;
       this.file = null;
       this.guess = null;
       this.requestVersion = 0;
@@ -5261,15 +5518,16 @@ function createPlugin(obsidian) {
           contentEl.createEl("h3").setText("论文已收录");
           contentEl.createEl("p").setText(payload.title || payload.slug);
           const acts = contentEl.createDiv({ cls: "pnx-form-actions" });
-          for (const [label, path] of [["打开笔记", result.notePath], ["打开原文 PDF", result.pdfPath]]) {
+          for (const [label, path] of [["打开论文卡片", result.notePath], ["打开原文 PDF", result.pdfPath]]) {
             if (!path) continue;
             const button = acts.createEl("button", { cls: "mod-cta" });
             button.setText(label);
             button.addEventListener("click", async () => {
               const file = this.app.vault.getAbstractFileByPath(path);
               if (!file) { new Notice("文件已移动，请在论文库中查找。" ); return; }
-              await this.app.workspace.getLeaf("tab").openFile(file);
               this.close();
+              if (path === result.notePath && this.openPaper) this.openPaper(path);
+              else await this.app.workspace.getLeaf("tab").openFile(file);
             });
           }
           const done = acts.createEl("button");
@@ -5330,8 +5588,8 @@ function createPlugin(obsidian) {
   }
 
   /** 独立阅读弹窗，不依赖图谱是否打开。 */
-  class BrowsePaperModal extends Modal {
-    constructor(app, plugin, initialPath = null, resume = false) {
+  class PaperCardModal extends Modal {
+    constructor(app, plugin, initialPath = null, resume = false, initialPosition = null) {
       super(app);
       styleModal(this);
       this.plugin = plugin;
@@ -5340,6 +5598,7 @@ function createPlugin(obsidian) {
       this.closed = false;
       this.initialPath = initialPath;
       this.resume = resume;
+      this.initialPosition = initialPosition;
     }
 
     onOpen() {
@@ -5347,7 +5606,7 @@ function createPlugin(obsidian) {
       const el = this.contentEl;
       el.addClass("pnx-browse");
       const top = el.createDiv({ cls: "pnx-browse-top" });
-      top.createEl("h2").setText("刷一刷");
+      top.createEl("h2").setText("论文卡片");
       this.poolEl = top.createDiv({ cls: "pnx-browse-pool" });
       this.article = el.createEl("article", { cls: "pnx-browse-article" });
       this.article.addEventListener("scroll", () => {
@@ -5363,7 +5622,7 @@ function createPlugin(obsidian) {
       this.info = heading.createDiv({ cls: "pnx-card-authors" });
       this.reader = this.article.createDiv({ cls: "pnx-browse-reader" });
       this.sections = {};
-      for (const [key, title] of [["overview", "整体综述"], ["notes", "Notes"]]) {
+      for (const [key, title] of [["overview", "整体综述"], ["notes", "阅读随记"]]) {
         const section = this.reader.createEl("section", { cls: "pnx-browse-section pnx-browse-" + key });
         const titleEl = section.createEl("h4", { cls: "pnx-browse-section-title" });
         titleEl.setText(title);
@@ -5377,7 +5636,9 @@ function createPlugin(obsidian) {
       const footer = el.createDiv({ cls: "pnx-browse-footer" });
       this.meta = footer.createDiv({ cls: "pnx-card-meta" });
       const actions = footer.createDiv({ cls: "pnx-browse-actions" });
-      this.editButton = this.button(actions, "编辑内容", () => this.run(async () => {
+      const auxiliary = actions.createDiv({ cls: "pnx-paper-tools", attr: { role: "group", "aria-label": "论文操作" } });
+      const primary = actions.createDiv({ cls: "pnx-paper-primary", attr: { role: "group", "aria-label": "阅读操作" } });
+      this.editButton = this.button(auxiliary, "编辑内容", () => this.run(async () => {
         if (this.editing) {
           await this.savePending();
           this.editing = false;
@@ -5397,13 +5658,15 @@ function createPlugin(obsidian) {
         this.updateEditor();
         this.status.setText("已放弃未保存的修改");
       }));
-      this.openButton = this.button(actions, "打开笔记", () => this.run(async () => {
+      this.openButton = this.button(primary, "打开笔记", () => this.run(async () => {
         await this.savePending();
-        await this.plugin.openPaperNote(this.file);
+        const top = Number(this.article.scrollTop) || 0;
+        const max = Math.max(0, (this.article.scrollHeight || 0) - (this.article.clientHeight || 0));
+        await this.plugin.openPaperNote(this.file, false, { kind: "browse", top, max, ratio: max ? top / max : 0 });
         this.closed = true;
         super.close();
       }));
-      this.graphButton = this.button(actions, "在图谱中查看", () => this.run(async () => {
+      this.graphButton = this.button(auxiliary, "在图谱中查看", () => this.run(async () => {
         await this.savePending();
         await this.plugin.activateView();
         const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
@@ -5414,27 +5677,49 @@ function createPlugin(obsidian) {
         this.closed = true;
         super.close();
       }));
-      this.nextButton = this.button(actions, "再刷一篇", () => this.run(() => this.nextPaper()));
-      this.pdfButton = this.button(actions, "补充／替换 PDF", () => this.run(async () => {
+      this.nextButton = this.button(primary, "再刷一篇", () => this.run(() => this.nextPaper()));
+      this.openButton.addClass("pnx-paper-open");
+      this.pdfButton = this.button(auxiliary, "补充／替换 PDF", () => this.run(async () => {
         await this.savePending();
         await this.plugin.openPdfDialog(this.file.path);
       }));
+      this.deleteButton = this.button(auxiliary, "删除论文", () => this.run(async () => {
+        await this.savePending();
+        await this.plugin.openDeletePaper(this.file.path, async () => {
+          this.closed = true;
+          super.close();
+        });
+      }));
+      this.deleteButton.addClass("pnx-delete-paper");
       this.nextButton.addClass("mod-cta");
       this.status = footer.createDiv({ cls: "pnx-browse-status", attr: { role: "status", "aria-live": "polite" } });
       return this.run(async () => {
         if (this.initialPath) {
           const paper = (await this.plugin.browsePapers()).find((p) => p.path === this.initialPath);
-          if (paper) { this.poolEl.setText("首页推荐"); await this.showPaper(paper.file); return; }
+          if (paper) { this.poolEl.setText(""); await this.showPaper(paper.file); return; }
         }
         await this.nextPaper();
       });
     }
 
     button(parent, label, action) {
-      const button = parent.createEl("button");
-      button.setText(label);
+      const button = parent.createEl("button", { cls: "pnx-paper-action", attr: { type: "button", "aria-label": label } });
+      this.actionLabel(button, label);
       button.addEventListener("click", action);
       return button;
+    }
+
+    actionLabel(button, label) {
+      const icons = { "编辑内容": "pencil", "保存并预览": "check", "保存修改": "save", "重新载入": "refresh-cw",
+        "放弃修改": "undo-2", "打开笔记": "book-open", "在图谱中查看": "network", "再刷一篇": "shuffle",
+        "补充／替换 PDF": "file-plus", "删除论文": "trash-2" };
+      button.empty();
+      if (icons[label]) {
+        const icon = button.createSpan({ cls: "pnx-paper-action-icon", attr: { "aria-hidden": "true" } });
+        setIcon(icon, icons[label]);
+      }
+      button.createSpan({ cls: "pnx-paper-action-label" }).setText(label);
+      button.setAttribute("aria-label", label);
     }
 
     async run(action) {
@@ -5446,7 +5731,7 @@ function createPlugin(obsidian) {
       } catch (error) {
         this.closeRequested = false;
         this.status.setText(error.message);
-        new Notice("刷一刷:" + error.message);
+        new Notice("论文卡片：" + error.message);
       } finally {
         this.busy = false;
         if (!this.closed) this.updateControls();
@@ -5460,10 +5745,9 @@ function createPlugin(obsidian) {
     loadEditors() {
       for (const key of ["overview", "notes"]) {
         const section = this.sections[key];
-        section.input.value = this.base ? this.base[key].trim() : "";
+        section.input.value = this.base && hasReadableSection(this.base[key]) ? this.base[key].trim() : "";
         section.loadedValue = section.input.value;
-        section.titleEl.setText(this.base && this.base[key + "Section"]
-          ? this.base[key + "Section"].title : key === "overview" ? "整体综述" : "Notes");
+        section.titleEl.setText(key === "overview" ? "整体综述" : "阅读随记");
       }
     }
 
@@ -5489,7 +5773,7 @@ function createPlugin(obsidian) {
 
     updateControls() {
       for (const button of this.contentEl.querySelectorAll("button")) button.disabled = this.busy;
-      for (const button of [this.editButton, this.openButton, this.graphButton, this.discardButton, this.pdfButton])
+      for (const button of [this.editButton, this.openButton, this.graphButton, this.discardButton, this.pdfButton, this.deleteButton])
         button.disabled = this.busy || !this.file;
       this.saveButton.disabled = this.busy || !this.file || !this.isDirty();
       for (const section of Object.values(this.sections)) section.input.disabled = this.busy || !this.file;
@@ -5503,7 +5787,7 @@ function createPlugin(obsidian) {
         if (this.editing) this.resizeEditor(section.input);
       }
       this.editActions.toggle(this.editing);
-      this.editButton.setText(this.editing ? "保存并预览" : "编辑内容");
+      this.actionLabel(this.editButton, this.editing ? "保存并预览" : "编辑内容");
     }
 
     resizeEditor(input) {
@@ -5530,11 +5814,12 @@ function createPlugin(obsidian) {
       for (const key of ["overview", "notes"]) {
         const section = this.sections[key];
         section.content.empty();
-        if (this.base[key].trim()) {
+        if (hasReadableSection(this.base[key])) {
           await MarkdownRenderer.render(this.app, this.base[key], section.content, this.file.path, this.renderComponent);
         } else {
           section.content.createEl("p", { cls: "pnx-browse-missing" }).setText(key === "overview"
             ? "这篇还没有整体综述，可以打开笔记看看，或在这里补充。"
+            : this.base.legacyDetailedNotes ? "旧 Notes 中保存了论文细节，请在完整笔记中阅读。这里可以另写自己的理解、疑问和启发。"
             : "还没写下想法。读到有启发的地方，就记在这里。" );
         }
       }
@@ -5544,7 +5829,8 @@ function createPlugin(obsidian) {
       const changedPaper = !this.file || this.file.path !== file.path;
       if (changedPaper && this.file) await this.rememberPosition();
       if (this.positionTimer) { globalThis.clearTimeout(this.positionTimer); this.positionTimer = null; }
-      const savedPosition = this.resume ? readingSession(this.plugin).position(file.path) : null;
+      const savedPosition = this.initialPosition || (this.resume ? readingSession(this.plugin).position(file.path) : null);
+      this.initialPosition = null;
       const text = await this.app.vault.read(file);
       this.file = file;
       this.base = browseNoteSnapshot(text);
@@ -5602,6 +5888,7 @@ function createPlugin(obsidian) {
         const saved = await this.app.vault.process(this.file, (text) => patchBrowseNote(text, this.base, draft));
         this.base = browseNoteSnapshot(saved);
         this.loadEditors();
+        await this.plugin.trackActivityFile(this.file);
       }
       await this.plugin.refreshBrowseViews();
       if (!this.editing) await this.renderBody();
@@ -5612,6 +5899,7 @@ function createPlugin(obsidian) {
       await this.savePending();
       await this.app.vault.process(this.file, (text) => patchScalarField(
         splitFrontmatter(text) ? text : "---\n\n---\n" + text, field, value));
+      await this.plugin.trackActivityFile(this.file);
       await this.plugin.refreshBrowseViews();
       await this.showPaper(this.file);
       this.status.setText("已保存");
@@ -5686,6 +5974,22 @@ function createPlugin(obsidian) {
   class ExplorerPlugin extends Plugin {
     async onload() {
       this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+      try { await activityLog(this).init(); }
+      catch (error) { this.reportActivityError(error); }
+      this.registerEvent(this.app.vault.on("create", file => activityLog(this).schedule(file, true)));
+      this.registerEvent(this.app.vault.on("modify", file => activityLog(this).schedule(file)));
+      this.registerEvent(this.app.vault.on("rename", (file, oldPath) => activityLog(this).rename(file, oldPath)));
+      this.registerEvent(this.app.vault.on("delete", file => activityLog(this).remove(file)));
+      this.register(() => { activityLog(this).dispose().catch(error => this.reportActivityError(error)); });
+      for (const event of ["create", "modify", "delete", "rename"]) {
+        this.registerEvent(this.app.vault.on(event, () => {
+          paperSearch(this).invalidate();
+          for (const leaf of this.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) {
+            const home = leaf.view;
+            if (home.search?.getAttribute("aria-expanded") === "true") home.scheduleSuggestions();
+          }
+        }));
+      }
       this.addSettingTab(new ExplorerSettingTab(this.app, this));
       this.registerView(VIEW_TYPE, (leaf) => new ExplorerView(leaf, this));
       this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
@@ -5693,6 +5997,23 @@ function createPlugin(obsidian) {
       this.addRibbonIcon("house", "Pinakes 首页", () => this.activateHome());
       this.addCommand({ id: "open-home", name: "打开首页", callback: () => this.activateHome() });
       this.addCommand({ id: "browse-papers", name: "刷一刷论文", callback: () => this.openBrowse() });
+      this.noteCardActions = new Map();
+      const refreshNoteCards = () => this.refreshNoteCardActions();
+      for (const event of ["file-open", "active-leaf-change", "layout-change"])
+        this.registerEvent(this.app.workspace.on(event, refreshNoteCards));
+      for (const event of ["rename", "delete"])
+        this.registerEvent(this.app.vault.on(event, refreshNoteCards));
+      this.app.workspace.onLayoutReady(refreshNoteCards);
+      this.register(() => {
+        for (const entry of this.noteCardActions.values()) entry.button.remove();
+        this.noteCardActions.clear();
+      });
+      this.addCommand({ id: "return-paper-card", name: "返回当前论文卡片", checkCallback: checking => {
+        const view = this.app.workspace.activeLeaf?.view;
+        if (!this.isPaperNoteView(view)) return false;
+        if (!checking) this.returnToPaperCard(view);
+        return true;
+      } });
       this.addCommand({ id: "open-library", name: "打开论文库", callback: () => this.activateLibrary("papers") });
       this.addCommand({ id: "open-queue", name: "打开阅读队列", callback: () => this.activateLibrary("queue") });
       this.addCommand({ id: "recover-operations", name: "恢复未完成操作", callback: () => this.openRecovery() });
@@ -5815,20 +6136,102 @@ function createPlugin(obsidian) {
       });
     }
 
-    openBrowse(initialPath = null, resume = false) {
+    reportActivityError(error) {
+      if (this.activityError === error.message) return;
+      this.activityError = error.message;
+      new Notice("论文操作不受影响，但活跃度暂未保存：" + error.message);
+    }
+
+    async recordActivity(type, id) {
+      try { await activityLog(this).record(type, id); this.activityError = null; }
+      catch (error) { this.reportActivityError(error); }
+    }
+
+    async trackActivityFile(file, created = false) {
+      try { await activityLog(this).observe(file, created); this.activityError = null; }
+      catch (error) { this.reportActivityError(error); }
+    }
+
+    async guardActivity(paths) {
+      try {
+        const release = await activityLog(this).guard(paths);
+        return async () => { try { await release(); } catch (error) { this.reportActivityError(error); } };
+      } catch (error) { this.reportActivityError(error); return async () => {}; }
+    }
+
+    isPaperNoteView(view) {
+      if (view?.getViewType() !== "markdown" || !view.file) return false;
+      const file = view.file;
+      if (this.app.vault.getAbstractFileByPath(file.path) !== file) return false;
+      const fm = this.app.metadataCache?.getFileCache(file)?.frontmatter || {};
+      return (fm.kind || kindOfPath(this.cachedSchema || DEFAULT_SCHEMA, file.path)) === "paper";
+    }
+
+    refreshNoteCardActions() {
+      this.noteCardActions ||= new Map();
+      const views = new Set(this.app.workspace.getLeavesOfType("markdown").map(leaf => leaf.view));
+      for (const [view, entry] of this.noteCardActions || []) {
+        if (!views.has(view) || !this.isPaperNoteView(view)) {
+          entry.button.remove();
+          this.noteCardActions.delete(view);
+        }
+      }
+      for (const view of views) {
+        if (!this.isPaperNoteView(view) || typeof view.addAction !== "function") continue;
+        let entry = this.noteCardActions.get(view);
+        if (entry) {
+          if (entry.file !== view.file) { entry.file = view.file; entry.position = null; }
+          continue;
+        }
+        const button = view.addAction("arrow-left", "返回论文卡片", () => this.returnToPaperCard(view));
+        button.addClass("pnx-note-card-return");
+        button.setAttribute("role", "button");
+        button.setAttribute("tabindex", "0");
+        button.setAttribute("aria-label", "返回论文卡片");
+        button.createSpan({ cls: "pnx-note-card-return-label" }).setText("返回论文卡片");
+        button.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this.returnToPaperCard(view);
+          }
+        });
+        this.noteCardActions.set(view, { button, file: view.file, position: null, busy: false });
+      }
+    }
+
+    async returnToPaperCard(view) {
+      if (!this.isPaperNoteView(view) || this.browseModal) return;
+      const entry = this.noteCardActions?.get(view);
+      if (entry?.busy) return;
+      const file = view.file;
+      if (entry) { entry.busy = true; entry.button.setAttribute("aria-busy", "true"); }
+      try {
+        await view.save();
+        if (view.file !== file || !this.isPaperNoteView(view)) return;
+        this.openBrowse(file.path, false, entry?.file === file ? entry.position : null);
+      } catch (error) { new Notice("暂时无法返回论文卡片：" + error.message); }
+      finally {
+        if (entry) { entry.busy = false; entry.button.removeAttribute("aria-busy"); }
+      }
+    }
+
+    openBrowse(initialPath = null, resume = false, initialPosition = null) {
       if (this.browseModal) return;
       this.nativeReading = null;
-      this.browseModal = new BrowsePaperModal(this.app, this, initialPath, resume);
+      this.browseModal = new PaperCardModal(this.app, this, initialPath, resume, initialPosition);
       this.browseModal.open();
     }
 
     async browseSchema() { this.cachedSchema = await libraryService(this).schema(); return this.cachedSchema; }
 
-    async openPaperNote(file, resume = false) {
+    async openPaperNote(file, resume = false, cardPosition = null) {
       if (!file) throw new Error("笔记已移动或删除，请刷新列表。" );
       const saved = resume ? readingSession(this).position(file.path) : null;
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.openFile(file, saved?.kind === "markdown" ? { state: saved.state } : undefined);
+      this.refreshNoteCardActions();
+      const cardAction = this.noteCardActions?.get(leaf.view);
+      if (cardAction) cardAction.position = cardPosition;
       const fm = parseFrontmatter(await this.app.vault.read(file));
       const state = leaf.view && typeof leaf.view.getState === "function" ? leaf.view.getState() : {};
       const position = saved?.kind === "markdown" ? saved : { kind: "markdown", state: {
@@ -5872,6 +6275,7 @@ function createPlugin(obsidian) {
     async setNoteField(file, field, value) {
       try {
         await this.app.vault.process(file, (text) => patchScalarField(text, field, value));
+        await this.trackActivityFile(file);
         new Notice(`${file.basename}:${field === "importance" ? "重要度 = " + value : "阅读状态 = " + value}`);
         // 视图开着的话,为了让按钮态/图例立刻正确,主动触发一次同步
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -5891,6 +6295,35 @@ function createPlugin(obsidian) {
       else await leaf.view.refresh();
       await this.app.workspace.revealLeaf(leaf);
       return leaf.view;
+    }
+
+    async openDeletePaper(notePath, onDeleted = null) {
+      const file = this.app.vault.getAbstractFileByPath(notePath);
+      if (!file) { new Notice("论文已移动或删除，请刷新列表。"); return; }
+      const fm = parseFrontmatter(await this.app.vault.read(file));
+      const modal = new Modal(this.app); styleModal(modal); modal.setTitle("删除整篇论文？");
+      modal.contentEl.createEl("p").setText(fm.title || file.basename);
+      modal.contentEl.createEl("p").setText("笔记、PDF 和这个论文文件夹中的所有附件都会移到回收站。删除前会备份，其他笔记中的引用不会自动删除。");
+      modal.contentEl.createEl("p", { cls: "pnx-resource-why" }).setText(posixDirname(notePath));
+      const status = modal.contentEl.createDiv({ cls: "pnx-form-error", attr: { role: "status", "aria-live": "polite" } });
+      const actions = modal.contentEl.createDiv({ cls: "pnx-form-actions" });
+      const cancel = actions.createEl("button"); cancel.setText("取消"); cancel.addEventListener("click", () => modal.close());
+      const remove = actions.createEl("button", { cls: "pnx-delete-paper" }); remove.setText("移到回收站");
+      let busy = false;
+      const close = modal.close.bind(modal); modal.close = () => { if (!busy) close(); };
+      remove.addEventListener("click", async () => {
+        if (busy) return; busy = true; cancel.disabled = true; remove.disabled = true;
+        status.setText("正在备份并删除…");
+        try {
+          const result = await libraryService(this).deletePaper(notePath);
+          if (onDeleted) await onDeleted();
+          try { await this.refreshBrowseViews(); } catch (error) { new Notice("论文已删除，重新打开页面即可刷新列表。"); }
+          new Notice(result.warning || "整篇论文已移到回收站，方向索引已更新。");
+          busy = false; modal.close();
+        } catch (error) { status.setText(error.message); }
+        finally { busy = false; cancel.disabled = false; remove.disabled = false; }
+      });
+      modal.open(); return modal;
     }
 
     async openPdfDialog(notePath) {
@@ -5937,7 +6370,7 @@ function createPlugin(obsidian) {
         if (!operations.length) list.createEl("p").setText("没有未完成操作。" );
         for (const operation of operations) {
           const row = list.createDiv({ cls: "pnx-resource-row" });
-          row.createEl("b").setText(({ reverse: "关系翻转", import: "论文导入", pdf: "PDF 更新", move: "论文归档" })[operation.kind] || "文件操作");
+          row.createEl("b").setText(({ reverse: "关系翻转", import: "论文导入", pdf: "PDF 更新", move: "论文归档", delete: "论文删除" })[operation.kind] || "文件操作");
           row.createSpan().setText(operation.kind === "reverse" ? `${operation.srcBase} → ${operation.dstBase}` : operation.notePath);
           const actions = row.createDiv({ cls: "pnx-form-actions" });
           const button = actions.createEl("button"); button.setText(operation.kind === "reverse" ? "恢复原关系" : operation.kind === "pdf" ? "恢复 PDF 操作" : operation.kind === "move" ? "继续完成归档" : "完成索引更新");
@@ -5947,7 +6380,7 @@ function createPlugin(obsidian) {
               if (operation.kind === "reverse") {
                 const results = await service.recoverRelations();
                 const failed = results.find((r) => !r.ok); if (failed) throw new Error(failed.error);
-              } else if (["pdf", "move"].includes(operation.kind)) await service.recoverOperation(operation.id);
+              } else if (["pdf", "move", "delete"].includes(operation.kind)) await service.recoverOperation(operation.id);
               else await service.finishImport(operation.id);
               await this.refreshBrowseViews(); status.setText("已处理"); await render();
             } catch (error) { status.setText(error.message); button.disabled = false; }
@@ -6112,7 +6545,7 @@ if (obsidian) {
     buildWikiIndex, computeSubGraph, buildIndexSection, sectionNoteLinks,
     pickBrowsePaper, browseNoteSnapshot, patchBrowseNote,
     DEFAULT_SCHEMA, kindOfPath, sectionsForKind, statusFieldOf, rootDirOf, rootDirsOf, adapters, homeArtwork,
-    isContainerNode, isPaperContainer, patchPdfReference,
+    isContainerNode, isPaperContainer, patchPdfReference, hasReadableSection,
     splitFrontmatter, groupFields,
     posixDirname, baseName, dirOf, rgbIntToHex, truncate,
   };

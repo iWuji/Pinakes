@@ -169,3 +169,14 @@ python3 tools/make_installer.py --repo . --out dist/
 `make_template.py` 重建输出目录，写入预设的空库骨架，复制 schema、看板、Templater 模板和配套插件。Pinakes 从根目录的三个标准构建文件复制，源码位于 `src/`；必须先构建。论文笔记与专题正文不复制到模板中；骨架正文定义在脚本中，修改 `wiki/` 的首页不会改动这份正文。
 
 `make_installer.py` 将安装脚本和 `installer/template/` 打包为 `dist/Pinakes-Installer.zip`，并在包内保留安装脚本的执行权限。它不重新生成模板，也不包含 Python 工具或项目说明。修改插件或模板后，按上面的顺序运行两条命令。
+
+## 统一论文正文结构
+
+```bash
+python3 tools/normalize_note_sections.py --wiki-dir wiki/
+# 检查预览后应用；自动备份全部待改 Markdown
+python3 tools/normalize_note_sections.py --wiki-dir wiki/ --apply
+python3 tools/test_note_sections.py
+```
+
+只整理标题层级和个人章节的归属，不生成正文，不修改属性或 PDF。统一二级标题为整体综述、论文细节、阅读随记、路径。明确的个人小节迁入随记，模糊的旧 Notes 留在细节；所有非标题正文行校验完整保留。`--backup-dir` 可指定一个尚不存在的备份目录，默认保存到个人 JoyCode 备份目录。

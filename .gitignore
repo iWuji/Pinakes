@@ -40,3 +40,7 @@ dist/
 # Plugin build output and development dependencies
 /main.js
 /node_modules/
+
+# Personal research activity history never ships with the public vault template.
+wiki/.obsidian/plugins/pinakes-explorer/activity.json*
+installer/template/.obsidian/plugins/pinakes-explorer/activity.json*

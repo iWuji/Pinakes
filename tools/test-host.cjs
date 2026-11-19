@@ -33,10 +33,16 @@ class Element {
   toggleClass(name, on) { if (on) this.classes.add(name); else this.classes.delete(name); }
   setAttribute(name, value) { this.attributes[name] = value; }
   getAttribute(name) { return this.attributes[name]; }
+  removeAttribute(name) { delete this.attributes[name]; }
+  remove() { this.removed = true; }
+  get id() { return this.attributes.id; }
+  contains(target) { return target === this || this.children.some(child => child.contains(target)); }
   focus() {}
   appendChild(child) { this.children.push(child); return child; }
   animate(frames, options) { const animation = { frames, options, cancel() { this.cancelled = true; } }; this.animations.push(animation); return animation; }
   toggle(show) { this.visible = show; }
+  hide() { this.visible = false; }
+  show() { this.visible = true; }
   empty() { this.children = []; this.textContent = ''; }
   addEventListener(name, fn) { this.events[name] = fn; }
   querySelectorAll(tag) { return this.children.flatMap((c) => [ ...(tag.split(',').map(t => t.trim()).includes(c.tag) ? [c] : []), ...c.querySelectorAll(tag) ]); }
@@ -53,6 +59,7 @@ class ItemView extends Component {
   constructor(leaf) { super(); itemViewConstructions++; this.leaf = leaf; this.app = leaf.app; this.contentEl = new Element(); }
 }
 class PluginStub extends Component {
+  register(callback) { (this.cleanups ||= []).push(callback); }
   loadData() { return Promise.resolve({ welcomed: true }); }
   saveData() { return Promise.resolve(); }
   addSettingTab() {}
@@ -74,9 +81,10 @@ const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
 const moduleStub = { exports: {} };
 const randomMath = Object.create(Math);
 randomMath.random = () => 0;
+const runtimeWindow = { setTimeout: (callback) => setTimeout(callback, 0), clearTimeout };
 vm.runInNewContext(source, {
   module: moduleStub, exports: moduleStub.exports, Math: randomMath,
-  setInterval, clearInterval, setTimeout, clearTimeout, window: { setTimeout: (callback) => setTimeout(callback, 0), clearTimeout },
+  setInterval, clearInterval, setTimeout, clearTimeout, window: runtimeWindow,
   require: (name) => name === 'obsidian' ? {
     Plugin: PluginStub, ItemView, PluginSettingTab: class {}, SuggestModal: class {},
     Modal, Component, TFile, Notice: class { constructor(text) { notices.push(text); } },
@@ -86,7 +94,7 @@ vm.runInNewContext(source, {
       el.rendered = markdown;
       el.sourcePath = sourcePath;
     } },
-  } : name === './adapters.js' ? require('../src/adapters.js') : name === './library-service.js' ? require('../src/library-service.js') : name === './reading-session.js' ? require('../src/reading-session.js') : require(name),
+  } : name === './adapters.js' ? require('../src/adapters.js') : name === './library-service.js' ? require('../src/library-service.js') : name === './reading-session.js' ? require('../src/reading-session.js') : name === './paper-search.js' ? require('../src/paper-search.js') : name === './activity-log.js' ? require('../src/activity-log.js') : require(name),
 });
 const Plugin = moduleStub.exports;
 
@@ -114,6 +122,8 @@ function fixture(empty = false) {
   let failure = null;
   const leaves = [];
   const events = new Map();
+  const listeners = new Map();
+  const onEvent = (key, fn) => { const list = listeners.get(key) || []; list.push(fn); listeners.set(key, list); events.set(key, (...args) => Promise.all(list.map(callback => callback(...args)))); return {}; };
   const app = {
     vault: {
       configDir: '.obsidian',
@@ -143,15 +153,31 @@ function fixture(empty = false) {
         for (const p of [...files.keys()]) if (p === folder.path || p.startsWith(folder.path + '/')) { files.delete(p); contents.delete(p); }
         const parent = files.get(path.posix.dirname(folder.path)); if (parent) parent.children = parent.children.filter((f) => f.path !== folder.path);
       },
-      on: (event, fn) => { events.set('vault:' + event, fn); return {}; },
+      on: (event, fn) => onEvent('vault:' + event, fn),
     },
     workspace: {
       getLeavesOfType: (type) => leaves.filter((leaf) => leaf.type === type),
-      on: (event, fn) => { events.set(event, fn); return {}; },
+      on: (event, fn) => onEvent(event, fn),
       onLayoutReady: () => {},
       revealLeaf: async (leaf) => { app.workspace.activeLeaf = leaf; },
       getLeaf: () => ({ app,
-        openFile: async (f, state) => { app.openedFile = f; app.openedState = state; },
+        openFile: async function(f, state) {
+          app.openedFile = f; app.openedState = state;
+          this.type = 'markdown';
+          this.view = { file: f, actions: [], state: state?.state || { mode: 'preview' },
+            getViewType: () => 'markdown', getState() { return this.state; },
+            addAction(icon, title, callback) {
+              const button = new Element('div', { attr: { title } });
+              button.events.click = callback; this.actions.push(button); return button;
+            },
+            async save() {
+              if (this.saveError) throw this.saveError;
+              if (this.pendingText != null) await app.vault.process(this.file, () => this.pendingText);
+            },
+          };
+          if (!leaves.includes(this)) leaves.push(this);
+          app.workspace.activeLeaf = this;
+        },
         setViewState: async function(state) {
           this.type = state.type; this.view = plugin.views.get(state.type)(this);
           leaves.push(this); await this.view.onOpen();
@@ -187,4 +213,5 @@ async function open(plugin) { plugin.openBrowse(); const modal = plugin.browseMo
 module.exports = { fixture, open, click, Element, Plugin, ItemView, notices, openedModals,
   setReducedMotion(value) { reducedMotion = value; },
   getItemViewConstructions() { return itemViewConstructions; },
+  setOmnisearch(api) { runtimeWindow.omnisearch = api; },
 };

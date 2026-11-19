@@ -98,7 +98,7 @@ const note = (slug) => `---\ntitle: '${slug}'\nyear: 2026\nreading: 未读\nimpo
   missing.contents.set(paperPath('a'), old.replace('不可覆盖的方法a', '外部修改的方法a'));
   await click(modal, '保存并预览');
   assert.ok(missing.contents.get(paperPath('a')).includes('外部修改的方法a'));
-  assert.ok(missing.contents.get(paperPath('a')).includes('## Notes'));
+  assert.ok(missing.contents.get(paperPath('a')).includes('## 阅读随记'));
   assert.ok(data.browseNoteSnapshot(missing.contents.get(paperPath('a'))).notes.includes('补充新 Notes'));
   await modal.close();
   const empty = fixture(true);

@@ -422,6 +422,8 @@ title: "\u3010\u7D22\u5F15\u3011\u7814\u7A76\u603B\u89C8"
             };
             await saveOperation(operation);
           }
+          const releaseActivity = plugin.guardActivity ? await plugin.guardActivity([notePath]) : async () => {
+          };
           try {
             await mkdir(folderPath);
             if (pdfPath) {
@@ -435,12 +437,15 @@ title: "\u3010\u7D22\u5F15\u3011\u7814\u7A76\u603B\u89C8"
             else if (hash(await vault.read(note)) !== operation.noteHash)
               throw new Error("\u8FD9\u7BC7\u7B14\u8BB0\u5DF2\u88AB\u4FEE\u6539\uFF0C\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u6253\u5F00\u5DF2\u6709\u7B14\u8BB0\u3002");
             await rebuildDirection(dir);
+            if (plugin.recordActivity) await plugin.recordActivity("added", "import:" + operation.id);
             await finishOperation(operation.id);
             return { notePath, pdfPath, folderPath };
           } catch (error) {
             const err = new Error(`\u5BFC\u5165\u672A\u5B8C\u6210\uFF0C\u8868\u5355\u5185\u5BB9\u5DF2\u4FDD\u7559\u3002\u53EF\u70B9\u51FB\u201C\u91CD\u8BD5\u5BFC\u5165\u201D\u7EE7\u7EED\uFF0C\u6216\u5728\u9996\u9875\u6062\u590D\u672A\u5B8C\u6210\u64CD\u4F5C\u3002\u8BE6\u60C5\uFF1A${error.message}`);
             err.operationId = operation.id;
             throw err;
+          } finally {
+            await releaseActivity();
           }
         });
       }
@@ -490,6 +495,7 @@ title: "\u3010\u7D22\u5F15\u3011\u7814\u7A76\u603B\u89C8"
           if (hash(await vault.read(requireNote(operation.notePath))) !== operation.noteHash || operation.pdfPath && hash(await vault.readBinary(fileAt(operation.pdfPath))) !== operation.pdfHash)
             throw new Error("\u6587\u4EF6\u5DF2\u6539\u53D8\uFF0C\u5DF2\u4FDD\u7559\u5185\u5BB9\uFF0C\u8BF7\u6253\u5F00\u7B14\u8BB0\u68C0\u67E5\u3002");
           await rebuildDirection(operation.direction);
+          if (plugin.recordActivity) await plugin.recordActivity("added", "import:" + operation.id);
           await finishOperation(id);
         });
       }
@@ -713,11 +719,89 @@ ${kind === "idea" ? "stage: \u5F85\u505A\n" : ""}---
           return results;
         });
       }
+      async function finishDelete(operation) {
+        if (fileAt(operation.folderPath)) throw new Error("\u8BBA\u6587\u6587\u4EF6\u5939\u4ECD\u5B58\u5728\uFF0C\u672A\u81EA\u52A8\u5220\u9664\u3002\u8BF7\u56DE\u5230\u8BBA\u6587\u5217\u8868\u786E\u8BA4\u540E\u91CD\u8BD5\u5220\u9664\u3002");
+        const colors = plugin.settings.nodeColors || {};
+        for (const path of Object.keys(colors)) if (path === operation.folderPath || path.startsWith(operation.folderPath + "/")) delete colors[path];
+        plugin.settings.readingHistory = (plugin.settings.readingHistory || []).filter((entry) => !entry.path.startsWith(operation.folderPath + "/"));
+        await plugin.saveData(plugin.settings);
+        await rebuildDirection(operation.direction);
+        await finishOperation(operation.id);
+      }
+      async function deletePaper(notePath) {
+        return serial(async () => {
+          var _a;
+          const state = await snapshot();
+          const node = state.index.nodes.get(notePath);
+          const folderPath = dirname(notePath);
+          const direction = dirname(folderPath);
+          if (!node || node.kind !== "paper" || dirname(direction) !== paperRoot(state.schema) || folderPath.split("/").pop() + ".md" !== notePath.split("/").pop())
+            throw new Error("\u8FD9\u7BC7\u7B14\u8BB0\u4E0D\u662F\u72EC\u7ACB\u8BBA\u6587\u6587\u4EF6\u5939\uFF0C\u672A\u5220\u9664\u3002\u8BF7\u5148\u68C0\u67E5\u76EE\u5F55\u7ED3\u6784\u3002");
+          const operations = await readJournal();
+          if (operations.some((o) => o.notePath === notePath || o.newNotePath === notePath || o.src === notePath || o.dst === notePath))
+            throw new Error("\u8FD9\u7BC7\u8BBA\u6587\u6709\u672A\u5B8C\u6210\u64CD\u4F5C\uFF0C\u8BF7\u5148\u4ECE\u9996\u9875\u6062\u590D\uFF0C\u518D\u5220\u9664\u3002");
+          const folder = fileAt(folderPath);
+          if (!folder || !Array.isArray(folder.children)) throw new Error("\u627E\u4E0D\u5230\u8BBA\u6587\u6587\u4EF6\u5939\uFF0C\u672A\u5220\u9664\u3002");
+          const id = randomUUID();
+          const backupDir = `${dirname(journalPath)}/backups/${id}/paper`;
+          await mkdir(backupDir, true);
+          const copied = [];
+          async function backup(current) {
+            for (const file of current.children || []) {
+              const relative = file.path.slice(folderPath.length + 1);
+              if (file.children) {
+                await mkdir(`${backupDir}/${relative}`, true);
+                await backup(file);
+              } else {
+                const bytes = await vault.readBinary(file);
+                await mkdir(dirname(`${backupDir}/${relative}`), true);
+                await vault.adapter.writeBinary(`${backupDir}/${relative}`, bytes);
+                if (hash(await vault.adapter.readBinary(`${backupDir}/${relative}`)) !== hash(bytes))
+                  throw new Error("\u5220\u9664\u524D\u5907\u4EFD\u6821\u9A8C\u5931\u8D25\uFF0C\u539F\u6587\u4EF6\u672A\u5220\u9664\u3002");
+                copied.push({ path: file.path, digest: hash(bytes) });
+              }
+            }
+          }
+          await backup(folder);
+          const currentPaths = [];
+          function collect(current) {
+            for (const file of current.children || []) {
+              if (file.children) collect(file);
+              else currentPaths.push(file.path);
+            }
+          }
+          collect(folder);
+          if (JSON.stringify(currentPaths.sort()) !== JSON.stringify(copied.map((entry) => entry.path).sort()))
+            throw new Error("\u5907\u4EFD\u65F6\u6587\u4EF6\u5939\u5185\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u672A\u5220\u9664\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          for (const entry of copied) {
+            const file = fileAt(entry.path);
+            if (!file || hash(await vault.readBinary(file)) !== entry.digest) throw new Error("\u5907\u4EFD\u65F6\u6587\u4EF6\u53D1\u751F\u53D8\u5316\uFF0C\u539F\u6587\u4EF6\u672A\u5220\u9664\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          }
+          const operation = { id, kind: "delete", notePath, folderPath, direction, backupDir, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+          await saveOperation(operation);
+          try {
+            if ((_a = app.fileManager) == null ? void 0 : _a.trashFile) await app.fileManager.trashFile(folder);
+            else await vault.trash(folder, true);
+          } catch (error) {
+            if (fileAt(folderPath)) {
+              await finishOperation(id);
+              throw new Error(`\u5220\u9664\u5931\u8D25\uFF0C\u8BBA\u6587\u6587\u4EF6\u5939\u4ECD\u4FDD\u7559\uFF0C\u53EF\u4EE5\u91CD\u8BD5\u3002\u8BE6\u60C5\uFF1A${error.message}`);
+            }
+          }
+          try {
+            await finishDelete(operation);
+          } catch (error) {
+            return { deleted: true, backupDir, warning: `\u8BBA\u6587\u5DF2\u79FB\u5230\u56DE\u6536\u7AD9\uFF0C\u4F46\u7D22\u5F15\u6216\u8BB0\u5F55\u66F4\u65B0\u672A\u5B8C\u6210\u3002\u8BF7\u4ECE\u9996\u9875\u6062\u590D\u64CD\u4F5C\u3002\u8BE6\u60C5\uFF1A${error.message}` };
+          }
+          return { deleted: true, backupDir, warning: null };
+        });
+      }
       async function recoverOperation(id) {
         return serial(async () => {
           const operation = (await readJournal()).find((o) => o.id === id);
           if (!operation) return;
-          if (operation.kind === "move") await finishMove(operation);
+          if (operation.kind === "delete") await finishDelete(operation);
+          else if (operation.kind === "move") await finishMove(operation);
           else if (operation.kind === "pdf") {
             if (operation.stage === "committed") await finishOperation(id);
             else await restorePdf(operation);
@@ -740,6 +824,7 @@ ${kind === "idea" ? "stage: \u5F85\u505A\n" : ""}---
         replacePdf,
         movePaper,
         movePapers,
+        deletePaper,
         recoverOperation
       };
     }
@@ -780,6 +865,537 @@ var require_reading_session = __commonJS({
       return { remember, position, rekey, flush: () => queue };
     }
     module2.exports = { createReadingSession: createReadingSession2 };
+  }
+});
+
+// src/paper-search.js
+var require_paper_search = __commonJS({
+  "src/paper-search.js"(exports2, module2) {
+    "use strict";
+    var normalize = (value) => String(value || "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+    var words = (value) => normalize(value).match(/[a-z0-9\u3400-\u9fff]+/g) || [];
+    var compact = (value) => normalize(value).replace(/[^a-z0-9\u3400-\u9fff]/g, "");
+    function nearWord(query, word) {
+      if (query.length < 4 || Math.abs(query.length - word.length) > 1) return false;
+      if (query.length === word.length) {
+        const mismatches = [];
+        for (let i2 = 0; i2 < query.length; i2++) if (query[i2] !== word[i2]) mismatches.push(i2);
+        return mismatches.length <= 1 || mismatches.length === 2 && mismatches[1] === mismatches[0] + 1 && query[mismatches[0]] === word[mismatches[1]] && query[mismatches[1]] === word[mismatches[0]];
+      }
+      const short = query.length < word.length ? query : word;
+      const long = query.length < word.length ? word : query;
+      let i = 0, j = 0, skips = 0;
+      while (i < short.length && j < long.length) {
+        if (short[i] === long[j]) {
+          i++;
+          j++;
+        } else {
+          if (++skips > 1) return false;
+          j++;
+        }
+      }
+      return true;
+    }
+    function subsequence(query, value) {
+      if (query.length < 2 || query.length > 18 || !/^[a-z0-9]+$/.test(query)) return 0;
+      let matched = 0, first = -1, last = -1;
+      for (let i = 0; i < value.length && matched < query.length; i++) {
+        if (value[i] === query[matched]) {
+          if (first < 0) first = i;
+          last = i;
+          matched++;
+        }
+      }
+      return matched === query.length && last - first < query.length * 3 ? 24 - (last - first - query.length) : 0;
+    }
+    function prepareSearchEntry2(entry) {
+      var _a, _b, _c;
+      const title = normalize(entry.title || ((_a = entry.fm) == null ? void 0 : _a.title) || entry.basename);
+      const tags = normalize((entry.tags || ((_b = entry.fm) == null ? void 0 : _b.tags) || []).join(" "));
+      const summary = normalize(entry.summary || ((_c = entry.fm) == null ? void 0 : _c.summary));
+      const body = normalize(entry.body || entry.content || "");
+      const basename = normalize(entry.basename);
+      return { ...entry, search: {
+        title,
+        tags,
+        summary,
+        body,
+        basename,
+        titleCompact: compact(title),
+        titleWords: words(title + " " + basename + " " + tags),
+        initials: words(title).filter((word) => /^[a-z]/.test(word) && !["with", "and", "the", "of", "for", "a", "an", "in", "to"].includes(word)).map((word) => word[0]).join("")
+      } };
+    }
+    function scoreEntry(entry, query) {
+      const data = entry.search;
+      const terms = words(query);
+      if (!terms.length) return 0;
+      let score = 0;
+      for (const term of terms) {
+        let match = 0;
+        if (data.title.includes(term)) match = data.titleWords.includes(term) ? 120 : 100;
+        if (data.basename.includes(term)) match = Math.max(match, 95);
+        if (data.tags.includes(term)) match = Math.max(match, 85);
+        if (data.summary.includes(term)) match = Math.max(match, 60);
+        if (data.body.includes(term)) match = Math.max(match, 25);
+        if (!match && /^[a-z0-9]+$/.test(term)) {
+          if (data.titleWords.some((word) => nearWord(term, word))) match = 65;
+          else match = Math.max(0, subsequence(term, data.titleCompact), subsequence(term, data.initials));
+        }
+        if (!match) return 0;
+        score += match;
+      }
+      if (data.title.includes(normalize(query))) score += 70;
+      return score;
+    }
+    function searchEntries2(entries, query, limit = Infinity) {
+      if (!normalize(query)) return entries.map((entry) => ({ entry, score: 0 }));
+      return entries.map((entry) => ({ entry, score: scoreEntry(entry.search ? entry : prepareSearchEntry2(entry), query) })).filter((result) => result.score > 0).sort((a, b) => b.score - a.score || String(a.entry.title || a.entry.basename).localeCompare(String(b.entry.title || b.entry.basename)) || a.entry.path.localeCompare(b.entry.path)).slice(0, limit);
+    }
+    function searchExcerpt(entry, query) {
+      const terms = words(query);
+      const source = String(entry.overview || "").replace(/<!--[\s\S]*?-->/g, "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) => label || target).replace(/[`#>*\[\]]/g, "").replace(/\s+/g, " ").trim();
+      const text = normalize(source);
+      const at = terms.map((term) => text.indexOf(term)).find((index) => index >= 0);
+      const start = at > 90 ? Math.max(0, at - 40) : 0;
+      return (start ? "\u2026" : "") + source.slice(start, start + 150) + (source.length > start + 150 ? "\u2026" : "");
+    }
+    function createPaperSearch2({ vault, schema, parseFrontmatter: parseFrontmatter2, kindOfPath: kindOfPath2, fallbackSchema, getOmnisearch, extractOverview }) {
+      let version = 0, cache = null, building = null;
+      const invalidate = () => {
+        version++;
+        cache = null;
+      };
+      async function entries() {
+        if ((cache == null ? void 0 : cache.version) === version) return cache.entries;
+        if ((building == null ? void 0 : building.version) === version) return building.promise;
+        const stamp = version;
+        const promise = (async () => {
+          const sc = await schema();
+          const scan = sc.scan || fallbackSchema.scan;
+          const files = vault.getMarkdownFiles().filter((file) => !file.path.split("/").some((segment) => (scan.skip_dirs || []).includes(segment)) && !(scan.skip_files || []).includes(file.basename));
+          const records = await Promise.all(files.map(async (file) => {
+            let content;
+            try {
+              content = await vault.cachedRead(file);
+            } catch (error) {
+              if (!vault.getAbstractFileByPath(file.path)) return null;
+              throw error;
+            }
+            const fm = parseFrontmatter2(content);
+            if ((fm.kind || kindOfPath2(sc, file.path)) !== "paper") return null;
+            return prepareSearchEntry2({
+              file,
+              path: file.path,
+              basename: file.basename,
+              title: fm.title || file.basename,
+              tags: fm.tags || [],
+              summary: fm.summary || "",
+              reading: fm.reading || "\u672A\u8BFB",
+              year: fm.year || "",
+              overview: extractOverview ? extractOverview(content) : "",
+              body: content.replace(/^---\r?\n[\s\S]*?\r?\n---/, "")
+            });
+          }));
+          const result = records.filter(Boolean);
+          if (stamp === version) cache = { version: stamp, entries: result };
+          return result;
+        })();
+        building = { version: stamp, promise };
+        try {
+          return await promise;
+        } finally {
+          if ((building == null ? void 0 : building.promise) === promise) building = null;
+        }
+      }
+      async function suggest(query, limit = 6, useOmnisearch = true) {
+        if (!words(query).length) return { results: [], source: "local" };
+        const records = await entries();
+        const local = searchEntries2(records, query);
+        const results = local.map(({ entry, score }) => ({ ...entry, score, excerpt: searchExcerpt(entry, query) }));
+        const api = useOmnisearch && getOmnisearch && getOmnisearch();
+        if (!api || typeof api.search !== "function") return { results: results.slice(0, limit), source: "local" };
+        let timer;
+        try {
+          const remote = await Promise.race([
+            Promise.resolve().then(() => api.search(query)),
+            new Promise((resolve) => {
+              timer = setTimeout(() => resolve(null), 900);
+            })
+          ]);
+          if (!Array.isArray(remote)) return { results: results.slice(0, limit), source: "local" };
+          const byPath = new Map(records.map((entry) => [entry.path, entry]));
+          const merged = new Map(results.map((entry) => [entry.path, entry]));
+          let rank = 0;
+          for (const item of remote) {
+            if (!item || typeof item.path !== "string") continue;
+            if (typeof vault.getName === "function" && item.vault && item.vault !== vault.getName()) continue;
+            const entry = byPath.get(item.path);
+            if (!entry || !vault.getAbstractFileByPath(item.path)) continue;
+            const existing = merged.get(item.path);
+            const score = ((existing == null ? void 0 : existing.score) || 0) + Math.max(10, 55 - rank++ * 2);
+            merged.set(item.path, { ...entry, score, excerpt: searchExcerpt(entry, query) });
+          }
+          return { results: [...merged.values()].sort((a, b) => b.score - a.score || a.path.localeCompare(b.path)).slice(0, limit), source: "omnisearch" };
+        } catch (error) {
+          return { results: results.slice(0, limit), source: "local" };
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
+      return { invalidate, entries, suggest };
+    }
+    module2.exports = { createPaperSearch: createPaperSearch2, prepareSearchEntry: prepareSearchEntry2, searchEntries: searchEntries2, searchExcerpt };
+  }
+});
+
+// src/activity-log.js
+var require_activity_log = __commonJS({
+  "src/activity-log.js"(exports2, module2) {
+    "use strict";
+    var { randomUUID } = require("crypto");
+    var TYPES = ["added", "status", "edited"];
+    var pad = (number) => String(number).padStart(2, "0");
+    function localDay(date = /* @__PURE__ */ new Date()) {
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+    function dayDate(day) {
+      const [year, month, date] = day.split("-").map(Number);
+      return new Date(year, month - 1, date, 12);
+    }
+    function shiftDay2(day, offset) {
+      const date = dayDate(day);
+      date.setDate(date.getDate() + offset);
+      return localDay(date);
+    }
+    var total = (day) => TYPES.reduce((sum, type) => sum + ((day == null ? void 0 : day[type]) || 0), 0);
+    function activityLevel(count) {
+      return !count ? 0 : count === 1 ? 1 : count <= 3 ? 2 : count <= 6 ? 3 : 4;
+    }
+    function mergeActivityHistory(ledger, plan) {
+      var _a, _b;
+      const validDay = (day) => typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day) && localDay(dayDate(day)) === day;
+      if (plan.version !== 1 || !Array.isArray(plan.events) || plan.events.some((event) => !validDay(event.day) || !TYPES.includes(event.type) || typeof event.id !== "string" || !event.id) || (plan.remove || []).some((item) => !validDay(item.day) || !TYPES.includes(item.type) || !Array.isArray(item.ids) || item.ids.some((id) => typeof id !== "string")))
+        throw new Error("\u5386\u53F2\u6D3B\u8DC3\u5EA6\u5BFC\u5165\u6587\u4EF6\u65E0\u6548\uFF0C\u539F\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002");
+      const data = JSON.parse(JSON.stringify(ledger));
+      for (const item of plan.remove || []) {
+        const values = data.days[item.day];
+        if (!values) continue;
+        const selected = new Set(item.ids);
+        const count = (values.ids || []).filter((id) => selected.has(id)).length;
+        if (count > (values[item.type] || 0)) throw new Error("\u5386\u53F2\u6D3B\u8DC3\u5EA6\u4FEE\u6B63\u4E0E\u5F53\u524D\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF0C\u539F\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002");
+        values[item.type] = (values[item.type] || 0) - count;
+        values.ids = (values.ids || []).filter((id) => !selected.has(id));
+      }
+      const ids = new Set(Object.values(data.days).flatMap((day) => day.ids || []));
+      for (const event of plan.events) {
+        if (ids.has(event.id)) continue;
+        const values = (_a = data.days)[_b = event.day] || (_a[_b] = { added: 0, status: 0, edited: 0, ids: [] });
+        values[event.type] = (values[event.type] || 0) + 1;
+        (values.ids || (values.ids = [])).push(event.id);
+        ids.add(event.id);
+        if (event.day < data.startedOn) data.startedOn = event.day;
+      }
+      return data;
+    }
+    function activityCalendar2(data, now = /* @__PURE__ */ new Date()) {
+      const today = localDay(now), first = shiftDay2(today, -364);
+      const start = dayDate(first);
+      start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+      const weeks = [], months = [];
+      let activeDays = 0, count = 0;
+      const todayData = data.days[today] || {};
+      for (let day = localDay(start), week = 0; day <= today; week++) {
+        const cells = [];
+        for (let row = 0; row < 7; row++, day = shiftDay2(day, 1)) {
+          const inRange = day >= first && day <= today;
+          const values = data.days[day] || {};
+          const contributions = inRange ? total(values) : 0;
+          if (inRange && contributions) {
+            activeDays++;
+            count += contributions;
+          }
+          const date = dayDate(day);
+          if (inRange && (date.getDate() === 1 || !months.length)) {
+            const month = date.getMonth() + 1;
+            if (!months.length || months[months.length - 1].month !== month) months.push({ week, month });
+          }
+          cells.push({
+            day,
+            inRange,
+            tracked: day >= data.startedOn || !!data.days[day],
+            count: contributions,
+            level: activityLevel(contributions),
+            added: values.added || 0,
+            status: values.status || 0,
+            edited: values.edited || 0
+          });
+        }
+        weeks.push(cells);
+      }
+      let streak = 0, cursor = total(todayData) ? today : shiftDay2(today, -1);
+      while (cursor >= first && total(data.days[cursor])) {
+        streak++;
+        cursor = shiftDay2(cursor, -1);
+      }
+      return {
+        today,
+        first,
+        weeks,
+        months,
+        activeDays,
+        total: count,
+        todayCount: total(todayData),
+        streak,
+        startedOn: data.startedOn
+      };
+    }
+    function comparableBody(text) {
+      return String(text).replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n)?/, "").replace(/^> \[!note\][^\r\n]*原文 PDF[^\r\n]*(?:\r?\n)?/gm, "").replace(/^##[ \t]+路径[ \t]*\r?\n[\s\S]*?(?=^##[ \t]|$(?![\s\S]))/gm, "").replace(/<!--[\s\S]*?-->/g, "").replace(/\[([^\]]*)\]\((?:<[^>]*>|[^)]*)\)/g, "$1").replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, path, label) => label || path.split("/").pop()).replace(/\r\n/g, "\n").trim();
+    }
+    function createActivityLog2({ vault, schema, model, now = () => /* @__PURE__ */ new Date(), onChange = () => {
+    }, onError = () => {
+    } }) {
+      const path = `${vault.configDir || ".obsidian"}/plugins/pinakes-explorer/activity.json`;
+      let data = null, initialized = null, queue = Promise.resolve(), stopped = false;
+      const known = /* @__PURE__ */ new Map(), suppressed = /* @__PURE__ */ new Map(), timers = /* @__PURE__ */ new Map();
+      let schemaCache = null;
+      const collectionStartedAt = now().getTime();
+      const serial = (task) => {
+        const result = queue.then(task);
+        queue = result.catch(() => {
+        });
+        return result;
+      };
+      const stateOf = (text) => {
+        var _a;
+        const fm = model.parseFrontmatter(text);
+        const metadata = JSON.stringify({
+          title: fm.title || "",
+          summary: fm.summary || "",
+          year: fm.year || "",
+          tags: [...fm.tags || []].sort(),
+          authors: fm.authors || [],
+          relations: ["extends", "uses", "competes", "contradicts"].map((key) => fm[key] || "")
+        });
+        return { reading: fm.reading || "\u672A\u8BFB", importance: (_a = fm.importance) != null ? _a : null, body: comparableBody(text), metadata };
+      };
+      const paper = (file, text) => {
+        var _a;
+        return (file == null ? void 0 : file.extension) === "md" && !(((_a = schemaCache.scan) == null ? void 0 : _a.skip_dirs) || []).some((dir) => file.path.split("/").includes(dir)) && (model.parseFrontmatter(text).kind || model.kindOfPath(schemaCache, file.path)) === "paper";
+      };
+      function validate(raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.version !== 1 || typeof parsed.days !== "object" || !parsed.days || Array.isArray(parsed.days) || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.startedOn || "") || localDay(dayDate(parsed.startedOn)) !== parsed.startedOn)
+          throw new Error("invalid activity ledger");
+        for (const [day, values] of Object.entries(parsed.days)) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || localDay(dayDate(day)) !== day || !values || TYPES.some((type) => {
+            var _a, _b;
+            return !Number.isInteger((_a = values[type]) != null ? _a : 0) || ((_b = values[type]) != null ? _b : 0) < 0;
+          }) || values.ids && (!Array.isArray(values.ids) || values.ids.some((id) => typeof id !== "string"))) throw new Error("invalid activity day");
+        }
+        return parsed;
+      }
+      async function mkdir(dir) {
+        if (!dir || await vault.adapter.exists(dir)) return;
+        const at = dir.lastIndexOf("/");
+        if (at >= 0) await mkdir(dir.slice(0, at));
+        await vault.adapter.mkdir(dir);
+      }
+      async function persist() {
+        await mkdir(path.slice(0, path.lastIndexOf("/")));
+        if (await vault.adapter.exists(path)) {
+          const existing = await vault.adapter.read(path);
+          try {
+            validate(existing);
+            await vault.adapter.write(path + ".bak", existing);
+          } catch (error) {
+            if (!(error instanceof SyntaxError) && error.message !== "invalid activity ledger" && error.message !== "invalid activity day") throw error;
+          }
+        }
+        await vault.adapter.write(path, JSON.stringify(data, null, 2));
+      }
+      async function init() {
+        if (initialized) return initialized;
+        initialized = (async () => {
+          schemaCache = await schema();
+          if (await vault.adapter.exists(path)) {
+            try {
+              data = validate(await vault.adapter.read(path));
+            } catch (error) {
+              if (await vault.adapter.exists(path + ".bak")) {
+                try {
+                  data = validate(await vault.adapter.read(path + ".bak"));
+                } catch (_) {
+                }
+              }
+              if (!data) throw new Error("\u6D3B\u8DC3\u5EA6\u8BB0\u5F55\u65E0\u6CD5\u8BFB\u53D6\uFF0C\u539F\u6587\u4EF6\u548C\u5907\u4EFD\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u68C0\u67E5 activity.json\u3002");
+            }
+          } else data = { version: 1, startedOn: localDay(now()), days: {} };
+          if (await vault.adapter.exists(path + ".import")) {
+            const next = mergeActivityHistory(data, JSON.parse(await vault.adapter.read(path + ".import")));
+            if (JSON.stringify(next) !== JSON.stringify(data)) {
+              data = next;
+              await persist();
+            }
+          }
+          await Promise.all(vault.getMarkdownFiles().map(async (file) => {
+            let text;
+            try {
+              text = await vault.cachedRead(file);
+            } catch (error) {
+              if (!vault.getAbstractFileByPath(file.path)) return;
+              throw error;
+            }
+            if (paper(file, text)) known.set(file.path, stateOf(text));
+          }));
+          if (!await vault.adapter.exists(path)) await persist();
+        })();
+        return initialized;
+      }
+      async function append(type, id, date = now()) {
+        if (!TYPES.includes(type)) throw new Error("\u672A\u77E5\u6D3B\u8DC3\u5EA6\u7C7B\u578B");
+        if (!data) throw new Error("\u6D3B\u8DC3\u5EA6\u5C1A\u672A\u521D\u59CB\u5316");
+        if (id && Object.values(data.days).some((day2) => (day2.ids || []).includes(id))) {
+          await persist();
+          return false;
+        }
+        const day = localDay(date), values = data.days[day] || { added: 0, status: 0, edited: 0, ids: [] };
+        values[type] = (values[type] || 0) + 1;
+        if (id) {
+          if (!values.ids) values.ids = [];
+          values.ids.push(id);
+        }
+        data.days[day] = values;
+        await persist();
+        onChange();
+        return true;
+      }
+      async function record(type, id = randomUUID(), date = now()) {
+        await init();
+        return serial(() => append(type, id, date));
+      }
+      async function observe(file, created = false, date = now()) {
+        await init();
+        return serial(async () => {
+          var _a;
+          if (stopped || !file || suppressed.has(file.path)) return;
+          const current = vault.getAbstractFileByPath(file.path);
+          if (!current) {
+            known.delete(file.path);
+            return;
+          }
+          const text = await vault.read(current);
+          if (!paper(current, text)) {
+            known.delete(file.path);
+            return;
+          }
+          const state = stateOf(text), before = known.get(file.path);
+          known.set(file.path, state);
+          if (!before) {
+            const createdAt = (_a = current.stat) == null ? void 0 : _a.ctime;
+            if (created && (!Number.isFinite(createdAt) || createdAt >= collectionStartedAt)) await append("added", randomUUID(), date);
+            return;
+          }
+          if (state.reading !== before.reading || state.importance !== before.importance) await append("status", randomUUID(), date);
+          else if (state.body !== before.body || state.metadata !== before.metadata) await append("edited", randomUUID(), date);
+        });
+      }
+      async function sync(notePath) {
+        await init();
+        return serial(async () => {
+          const file = vault.getAbstractFileByPath(notePath);
+          if (!file) {
+            known.delete(notePath);
+            return;
+          }
+          const text = await vault.read(file);
+          if (paper(file, text)) known.set(notePath, stateOf(text));
+        });
+      }
+      async function guard(notePaths) {
+        await init();
+        for (const path2 of notePaths) {
+          suppressed.set(path2, (suppressed.get(path2) || 0) + 1);
+          if (timers.has(path2)) {
+            clearTimeout(timers.get(path2).timer);
+            timers.delete(path2);
+          }
+        }
+        let released = false;
+        return async () => {
+          if (released) return;
+          released = true;
+          try {
+            for (const path2 of notePaths) await sync(path2);
+          } finally {
+            for (const path2 of notePaths) {
+              const count = suppressed.get(path2) - 1;
+              if (count > 0) suppressed.set(path2, count);
+              else suppressed.delete(path2);
+            }
+          }
+        };
+      }
+      function schedule(file, created = false) {
+        if (stopped || !file || file.extension !== "md" || suppressed.has(file.path)) return;
+        const previous = timers.get(file.path);
+        if (previous) clearTimeout(previous.timer);
+        const path2 = file.path;
+        const entry = { file, created: created || !!(previous == null ? void 0 : previous.created), date: now(), timer: null };
+        entry.timer = setTimeout(() => {
+          timers.delete(path2);
+          observe(entry.file, entry.created, entry.date).catch(onError);
+        }, 800);
+        timers.set(path2, entry);
+      }
+      function rename(file, oldPath) {
+        if (timers.has(oldPath)) {
+          clearTimeout(timers.get(oldPath).timer);
+          timers.delete(oldPath);
+        }
+        for (const path2 of [...known.keys()]) {
+          if (path2 === oldPath || path2.startsWith(oldPath + "/")) {
+            known.set(file.path + path2.slice(oldPath.length), known.get(path2));
+            known.delete(path2);
+          }
+        }
+      }
+      function remove(file) {
+        for (const path2 of [...known.keys()]) if (path2 === file.path || path2.startsWith(file.path + "/")) known.delete(path2);
+        for (const path2 of [...timers.keys()]) if (path2 === file.path || path2.startsWith(file.path + "/")) {
+          clearTimeout(timers.get(path2).timer);
+          timers.delete(path2);
+        }
+      }
+      async function snapshot() {
+        await init();
+        await queue;
+        return JSON.parse(JSON.stringify(data));
+      }
+      async function flush() {
+        const pending = [...timers.values()];
+        timers.clear();
+        for (const entry of pending) {
+          clearTimeout(entry.timer);
+          await observe(entry.file, entry.created, entry.date);
+        }
+        await init();
+        return serial(persist);
+      }
+      function dispose() {
+        const pending = [...timers.values()];
+        timers.clear();
+        for (const entry of pending) clearTimeout(entry.timer);
+        return (async () => {
+          for (const entry of pending) await observe(entry.file, entry.created, entry.date);
+          stopped = true;
+          await queue;
+        })();
+      }
+      return { init, record, observe, schedule, guard, sync, rename, remove, snapshot, flush, dispose };
+    }
+    module2.exports = { createActivityLog: createActivityLog2, activityCalendar: activityCalendar2, activityLevel, localDay, shiftDay: shiftDay2, total, mergeActivityHistory };
   }
 });
 
@@ -854,6 +1470,8 @@ try {
 }
 var { createLibraryService } = require_library_service();
 var { createReadingSession } = require_reading_session();
+var { createPaperSearch, prepareSearchEntry, searchEntries } = require_paper_search();
+var { createActivityLog, activityCalendar, shiftDay } = require_activity_log();
 var homeArtwork = null;
 try {
   const cover = require_pinakes_cover();
@@ -1486,12 +2104,20 @@ function buildPaperNote({ dirName, year, slug, title, tags, summary, authors, pd
     ...abstract ? ["> [!abstract] \u539F\u6458\u8981", ...abstract.split(/\n+/).map((l) => "> " + l), ""] : [],
     "## \u6574\u4F53\u7EFC\u8FF0",
     "",
-    "\uFF08\u81EA\u7531\u8BB0\u5F55\uFF1A\u8FD9\u7BC7\u5728\u89E3\u4EC0\u4E48\u95EE\u9898\u3001\u5173\u952E\u673A\u5236\u3001\u503C\u4E0D\u503C\u5F97\u6DF1\u8BFB\u3002\u4E0B\u9762\u51E0\u8282\u53EA\u662F\u8D77\u6B65\u5EFA\u8BAE\uFF0C\u968F\u610F\u589E\u5220\u6539\u540D\u3002\uFF09",
+    "<!-- \u7B80\u8981\u89E3\u91CA\u95EE\u9898\u3001\u5173\u952E\u65B9\u6CD5\u4E0E\u4E3B\u8981\u7ED3\u8BBA\u3002\u672A\u8BFB\u539F\u6587\u65F6\u7559\u7A7A\u3002 -->",
     "",
-    "## \u8BBA\u6587\u4FE1\u606F",
+    "## \u8BBA\u6587\u7EC6\u8282",
+    "",
+    "### \u8BBA\u6587\u4FE1\u606F",
     `- \u6807\u9898\uFF1A${title || slug}`,
     `- \u5E74\u4EFD\uFF1A${year}`,
     pdfName ? `- \u539F\u6587\uFF1A[${pdfName}](${pdfName})` : "- \u539F\u6587\uFF1A\u5F85\u8865",
+    "",
+    "<!-- \u65B9\u6CD5\u3001\u516C\u5F0F\u3001\u5B9E\u9A8C\u4E0E\u539F\u6587\u4F9D\u636E\u5199\u5728\u8FD9\u91CC\uFF0C\u7528\u4E09\u7EA7\u6807\u9898\u7EC4\u7EC7\u3002 -->",
+    "",
+    "## \u9605\u8BFB\u968F\u8BB0",
+    "",
+    "<!-- \u7559\u7ED9\u81EA\u5DF1\u7684\u7406\u89E3\u3001\u7591\u95EE\u548C\u542F\u53D1\uFF1B\u6CA1\u6709\u4E2A\u4EBA\u8BB0\u5F55\u65F6\u4FDD\u6301\u7A7A\u767D\u3002 -->",
     "",
     "## \u8DEF\u5F84",
     `- [\u8FD4\u56DE\u65B9\u5411\u9875](../\u3010\u7D22\u5F15\u3011${dirName}.md)`,
@@ -1761,29 +2387,46 @@ function browseNoteSnapshot(text) {
     if (!heading) continue;
     const title = heading[2].replace(/[ \t]+#+[ \t]*$/, "");
     const name = title.replace(/\*\*|__/g, "").replace(/^(?:\d+[.、．)]|[一二三四五六七八九十]+[、.．])[ \t]*/, "").trim().toLowerCase();
-    const key = /^(整体综述|overview)$/.test(name) ? "overview" : /^(notes?|笔记|个人笔记|我的笔记|阅读笔记|我的批注(?:与\s*open debates)?)$/.test(name) ? "notes" : null;
+    const key = /^(整体综述|整体概括|论文概览|overview)$/.test(name) ? "overview" : /^(阅读随记|个人理解|notes?|笔记|个人笔记|我的笔记|阅读笔记|我的批注(?:与\s*open debates)?)$/.test(name) ? "notes" : null;
     headings.push({
       key,
+      name,
       title,
       level: heading[1].length,
       start: offset + line.index,
       contentStart: offset + line.index + line[0].length
     });
   }
-  const result = {};
+  for (const section of headings) {
+    const next = headings.find((h) => h.start > section.start && (h.key || h.level <= section.level));
+    section.end = next ? next.start : text.length;
+    section.content = text.slice(section.contentStart, section.end);
+  }
+  const result = { legacyDetailedNotes: false };
   for (const key of ["overview", "notes"]) {
-    const matches = headings.filter((h) => h.key === key);
+    let matches = headings.filter((h) => h.key === key);
+    if (key === "notes") {
+      const personal = matches.filter((h) => /^(阅读随记|个人理解)$/.test(h.name));
+      if (personal.length) matches = personal;
+      else {
+        matches = matches.filter((h) => {
+          const detailed = /^(notes?|笔记|阅读笔记)$/.test(h.name) && headings.some((sub) => sub.start > h.start && sub.start < h.end && sub.level > h.level && /^(?:论文信息|背景(?:与动机)?|问题设定|问题与动机|方法(?:与实验设计)?|核心方法(?:与创新)?|核心机制|训练(?:与推理|目标)?|实验(?:与结论|关键结果|结果|设计)?|公式|problem setting|methods?|experiments?|training|results)(?:\s|$|[：:])/.test(sub.name));
+          if (detailed) result.legacyDetailedNotes = true;
+          return !detailed;
+        });
+      }
+    }
     const section = matches[0];
     if (section) {
-      const next = headings.find((h) => h.start > section.start && (h.key || h.level <= section.level));
-      section.end = next ? next.start : text.length;
-      section.content = text.slice(section.contentStart, section.end);
       section.ambiguous = matches.length > 1;
     }
     result[key] = section ? section.content : "";
     result[key + "Section"] = section || null;
   }
   return result;
+}
+function hasReadableSection(content) {
+  return !!String(content || "").replace(/<!--[\s\S]*?-->/g, "").trim();
 }
 function patchBrowseNote(text, base, draft) {
   const latest = browseNoteSnapshot(text);
@@ -1792,7 +2435,7 @@ function patchBrowseNote(text, base, draft) {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   for (const key of ["overview", "notes"]) {
     if (draft[key] === base[key]) continue;
-    const label = key === "overview" ? "\u6574\u4F53\u7EFC\u8FF0" : "Notes";
+    const label = key === "overview" ? "\u6574\u4F53\u7EFC\u8FF0" : "\u9605\u8BFB\u968F\u8BB0";
     const section = latest[key + "Section"];
     if (base[key + "Section"] && base[key + "Section"].ambiguous || section && section.ambiguous)
       throw new Error(`\u627E\u5230\u591A\u4E2A\u201C${label}\u201D\u7AE0\u8282\uFF0C\u8BF7\u6253\u5F00\u5B8C\u6574\u7B14\u8BB0\u786E\u8BA4\u8981\u4FEE\u6539\u54EA\u4E00\u5904\u3002`);
@@ -1800,7 +2443,11 @@ function patchBrowseNote(text, base, draft) {
       throw new Error(`${label}\u5DF2\u5728\u5176\u4ED6\u5730\u65B9\u4FEE\u6539\u3002\u8FD9\u91CC\u7684\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5148\u590D\u5236\uFF0C\u518D\u70B9\u201C\u91CD\u65B0\u8F7D\u5165\u201D\u67E5\u770B\u6700\u65B0\u7B14\u8BB0\u3002`);
     const content = draft[key].replace(/\r?\n/g, eol).replace(/(?:\r?\n)*$/, "");
     if (section) changes.push({ start: section.contentStart, end: section.end, value: eol + content + eol + eol });
-    else if (content.trim()) appended.push("## " + label + eol + eol + content + eol);
+    else if (content.trim()) {
+      const navigation = text.search(/^##[ \t]+路径[ \t]*\r?$/m);
+      if (navigation >= 0) changes.push({ start: navigation, end: navigation, value: "## " + label + eol + eol + content + eol + eol });
+      else appended.push("## " + label + eol + eol + content + eol);
+    }
   }
   for (const change of changes.sort((a, b) => b.start - a.start))
     text = text.slice(0, change.start) + change.value + text.slice(change.end);
@@ -2220,6 +2867,31 @@ function createPlugin(obsidian2) {
   function readingSession(plugin) {
     if (!plugin.readingSession) plugin.readingSession = createReadingSession(plugin);
     return plugin.readingSession;
+  }
+  function paperSearch(plugin) {
+    if (!plugin.paperSearch) plugin.paperSearch = createPaperSearch({
+      vault: plugin.app.vault,
+      schema: () => libraryService(plugin).schema(),
+      parseFrontmatter,
+      kindOfPath,
+      fallbackSchema: DEFAULT_SCHEMA,
+      extractOverview: (content) => browseNoteSnapshot(content).overview,
+      getOmnisearch: () => globalThis.omnisearch || (typeof window !== "undefined" ? window.omnisearch : null)
+    });
+    return plugin.paperSearch;
+  }
+  function activityLog(plugin) {
+    if (!plugin.activityLog) plugin.activityLog = createActivityLog({
+      vault: plugin.app.vault,
+      schema: () => libraryService(plugin).schema(),
+      model: { parseFrontmatter, kindOfPath },
+      onChange: () => {
+        var _a, _b;
+        for (const leaf of plugin.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) (_b = (_a = leaf.view).refreshActivity) == null ? void 0 : _b.call(_a);
+      },
+      onError: (error) => plugin.reportActivityError(error)
+    });
+    return plugin.activityLog;
   }
   function styleModal(modal) {
     modal.modalEl.addClass("pnx-modal");
@@ -2971,12 +3643,12 @@ ${node.basename}` : node.basename;
       const acts = this.cardBodyEl.createDiv({ cls: "pnx-card-acts" });
       const btnOpen = acts.createEl("button");
       btnOpen.addClass("is-primary");
-      btnOpen.setText("\u6253\u5F00\u7B14\u8BB0");
+      btnOpen.setText(node.kind === "paper" ? "\u6253\u5F00\u8BBA\u6587\u5361\u7247" : "\u6253\u5F00\u7B14\u8BB0");
       btnOpen.addEventListener("click", () => this.openNote(node));
       if (node.kind === "paper") {
-        const pdf = acts.createEl("button");
-        pdf.setText("\u8865\u5145\uFF0F\u66FF\u6362 PDF");
-        pdf.addEventListener("click", () => this.plugin.openPdfDialog(node.path));
+        const note = acts.createEl("button");
+        note.setText("\u6253\u5F00\u8BBA\u6587\u7B14\u8BB0");
+        note.addEventListener("click", () => this.plugin.openPaperNote(this.app.vault.getAbstractFileByPath(node.path)));
       }
       const btnInto = acts.createEl("button");
       btnInto.setText("\u8FDB\u5165");
@@ -3037,6 +3709,7 @@ ${node.basename}` : node.basename;
       if (!(file instanceof TFile)) return;
       try {
         await this.app.vault.process(file, (text) => patchScalarField(text, field, value));
+        await this.plugin.trackActivityFile(file);
         if (field === "reading") node.reading = value || READING_UNREAD;
         else if (field === STAGE_FIELD) node.stage = value || IDEA_STAGES[0].key;
         else if (field === "importance") node.importance = value || IMPORTANCE_MIN;
@@ -3054,6 +3727,7 @@ ${node.basename}` : node.basename;
       if (!(file instanceof TFile)) return;
       try {
         await this.app.vault.process(file, (text) => patchTags(text, on ? { add: tag } : { remove: tag }));
+        await this.plugin.trackActivityFile(file);
         node.tags = on ? [...node.tags || [], tag] : (node.tags || []).filter((t) => t !== tag);
         if (on && !this.plugin.settings.tagColors[tag]) {
           this.plugin.settings.tagColors[tag] = this.tagColor(tag);
@@ -3326,6 +4000,10 @@ ${node.basename}` : node.basename;
     async openNote(node) {
       const f = this.app.vault.getAbstractFileByPath(node.path);
       if (!(f instanceof TFile)) return;
+      if (node.kind === "paper") {
+        this.plugin.openBrowse(node.path);
+        return;
+      }
       const leaves = this.app.workspace.getLeavesOfType("markdown");
       const existing = leaves.find((l) => l.getViewState().state && l.getViewState().state.file === node.path);
       const leaf = existing || this.app.workspace.getLeaf("tab");
@@ -3465,7 +4143,7 @@ ${node.basename}` : node.basename;
       const kind = this.nodeKind(node);
       const menu = this.openPanel(point);
       menu.createDiv({ cls: "pnx-menu-title" }).setText(truncate(node.title || node.basename, 34));
-      this.menuRow(menu, "file-text", "\u6253\u5F00\u7B14\u8BB0", () => {
+      this.menuRow(menu, "file-text", node.kind === "paper" ? "\u6253\u5F00\u8BBA\u6587\u5361\u7247" : "\u6253\u5F00\u7B14\u8BB0", () => {
         this.closeMenu();
         this.openNote(node);
       });
@@ -4043,10 +4721,10 @@ ${node.basename}` : node.basename;
           new Notice(`${this.paperRoot()}/ \u4E0B\u6CA1\u6709\u65B9\u5411\u7D22\u5F15,\u5148\u65B0\u5EFA\u4E00\u4E2A\u65B9\u5411`);
           return;
         }
-        new AddPaperModal(this.app, retry, (payload) => this.addPaperFromPdf(payload), opts).open();
+        new AddPaperModal(this.app, retry, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: (path) => this.plugin.openBrowse(path) }).open();
         return;
       }
-      new AddPaperModal(this.app, dirs, (payload) => this.addPaperFromPdf(payload), opts).open();
+      new AddPaperModal(this.app, dirs, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: (path) => this.plugin.openBrowse(path) }).open();
     }
     /** 待归档分区不存在时补一个(空库自举的第二段;有就不动)。 */
     async ensureUnfiled() {
@@ -4097,11 +4775,19 @@ ${node.basename}` : node.basename;
         "",
         "## \u6574\u4F53\u7EFC\u8FF0",
         "",
-        "(\u81EA\u7531\u8BB0\u5F55:\u8FD9\u7BC7\u5728\u89E3\u4EC0\u4E48\u95EE\u9898\u3001\u5173\u952E\u673A\u5236\u3001\u503C\u4E0D\u503C\u5F97\u6DF1\u8BFB\u3002\u4E0B\u9762\u51E0\u8282\u53EA\u662F\u8D77\u6B65\u5EFA\u8BAE,\u968F\u610F\u589E\u5220\u6539\u540D\u3002)",
+        "<!-- \u7B80\u8981\u89E3\u91CA\u95EE\u9898\u3001\u5173\u952E\u65B9\u6CD5\u4E0E\u4E3B\u8981\u7ED3\u8BBA\u3002\u672A\u8BFB\u539F\u6587\u65F6\u7559\u7A7A\u3002 -->",
         "",
-        "## \u8BBA\u6587\u4FE1\u606F",
+        "## \u8BBA\u6587\u7EC6\u8282",
+        "",
+        "### \u8BBA\u6587\u4FE1\u606F",
         `- \u6807\u9898:${slug}`,
         `- \u5E74\u4EFD:${year}`,
+        "",
+        "<!-- \u65B9\u6CD5\u3001\u516C\u5F0F\u3001\u5B9E\u9A8C\u4E0E\u539F\u6587\u4F9D\u636E\u5199\u5728\u8FD9\u91CC\uFF0C\u7528\u4E09\u7EA7\u6807\u9898\u7EC4\u7EC7\u3002 -->",
+        "",
+        "## \u9605\u8BFB\u968F\u8BB0",
+        "",
+        "<!-- \u7559\u7ED9\u81EA\u5DF1\u7684\u7406\u89E3\u3001\u7591\u95EE\u548C\u542F\u53D1\uFF1B\u6CA1\u6709\u4E2A\u4EBA\u8BB0\u5F55\u65F6\u4FDD\u6301\u7A7A\u767D\u3002 -->",
         "",
         "## \u8DEF\u5F84",
         `- [\u8FD4\u56DE\u65B9\u5411\u9875](../\u3010\u7D22\u5F15\u3011${dirName}.md)`,
@@ -4110,6 +4796,7 @@ ${node.basename}` : node.basename;
       try {
         await this.app.vault.createFolder(`${dirPath}/${folderName}`);
         await this.app.vault.create(`${dirPath}/${folderName}/${folderName}.md`, note);
+        await this.plugin.trackActivityFile(this.app.vault.getAbstractFileByPath(`${dirPath}/${folderName}/${folderName}.md`), true);
       } catch (err) {
         new Notice(`\u521B\u5EFA\u5931\u8D25:${err.message}`);
         return;
@@ -5139,7 +5826,7 @@ ${node.basename}` : node.basename;
     async openAddPaper(opts = {}) {
       const state = await libraryService(this.plugin).ensurePaperStructure();
       const directions = libraryService(this.plugin).directions(state);
-      const modal = new AddPaperModal(this.app, directions, (payload) => this.addPaperFromPdf(payload), opts);
+      const modal = new AddPaperModal(this.app, directions, (payload) => this.addPaperFromPdf(payload), { ...opts, openPaper: (path) => this.plugin.openBrowse(path) });
       modal.open();
       return modal;
     }
@@ -5207,11 +5894,66 @@ ${node.basename}` : node.basename;
       setIcon(refresh, "refresh-cw");
       refresh.addEventListener("click", () => this.refresh());
       const search = this.page.createEl("form", { cls: "pnx-home-search" });
-      this.search = search.createEl("input", { type: "search", placeholder: "\u641C\u7D22\u8BBA\u6587\u3001\u6807\u7B7E\u6216\u7B80\u4ECB", attr: { "aria-label": "\u641C\u7D22\u8BBA\u6587\u5E93" } });
+      this.searchWrap = search.createDiv({ cls: "pnx-home-search-field" });
+      const searchId = "pnx-search-" + Math.random().toString(36).slice(2);
+      this.search = this.searchWrap.createEl("input", { type: "search", placeholder: "\u641C\u7D22\u8BBA\u6587\u3001\u6807\u7B7E\u6216\u7B14\u8BB0\u5185\u5BB9", attr: {
+        "aria-label": "\u641C\u7D22\u8BBA\u6587\u5E93",
+        role: "combobox",
+        "aria-autocomplete": "list",
+        "aria-expanded": "false",
+        "aria-controls": searchId,
+        autocomplete: "off"
+      } });
+      this.suggestions = this.searchWrap.createDiv({ cls: "pnx-search-suggestions", attr: { id: searchId, role: "listbox", "aria-label": "\u63A8\u8350\u8BBA\u6587" } });
+      this.suggestions.hide();
+      this.searchAnnouncement = this.searchWrap.createDiv({ cls: "pnx-search-announcement", attr: { role: "status", "aria-live": "polite" } });
+      this.searchResults = [];
+      this.searchActive = -1;
+      this.searchVersion = 0;
+      this.composing = false;
+      this.search.addEventListener("input", () => {
+        if (!this.composing) this.scheduleSuggestions();
+      });
+      this.search.addEventListener("focus", () => {
+        if (this.search.value.trim()) this.scheduleSuggestions();
+      });
+      this.search.addEventListener("compositionstart", () => {
+        this.composing = true;
+        this.closeSuggestions();
+      });
+      this.search.addEventListener("compositionend", () => {
+        this.composing = false;
+        this.scheduleSuggestions();
+      });
+      this.search.addEventListener("blur", (event) => {
+        if (!this.suggestions.contains(event.relatedTarget)) this.closeSuggestions();
+      });
+      this.suggestions.addEventListener("focusout", (event) => {
+        if (event.relatedTarget !== this.search && !this.suggestions.contains(event.relatedTarget)) this.closeSuggestions();
+      });
+      this.contentEl.addEventListener("scroll", () => {
+        if (this.search.getAttribute("aria-expanded") === "true") this.fitSuggestions();
+      });
+      this.search.addEventListener("keydown", (event) => {
+        if (event.isComposing || this.composing || event.keyCode === 229) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.closeSuggestions();
+        } else if (["ArrowDown", "ArrowUp"].includes(event.key) && this.searchResults.length) {
+          event.preventDefault();
+          this.searchActive = event.key === "ArrowDown" ? (this.searchActive + 1) % this.searchResults.length : this.searchActive < 0 ? this.searchResults.length - 1 : (this.searchActive - 1 + this.searchResults.length) % this.searchResults.length;
+          this.updateSearchActive();
+        } else if (event.key === "Enter" && this.searchActive >= 0 && this.searchResults[this.searchActive]) {
+          event.preventDefault();
+          this.openSearchResult(this.searchResults[this.searchActive]);
+        }
+      });
       const find = search.createEl("button", { attr: { type: "submit" } });
       find.setText("\u641C\u7D22");
       search.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (this.composing) return;
+        this.closeSuggestions();
         return this.perform(() => this.plugin.activateLibrary("papers", { q: this.search.value.trim() }));
       });
       this.continueEl = this.page.createDiv({ cls: "pnx-home-continue" });
@@ -5233,6 +5975,8 @@ ${node.basename}` : node.basename;
       feature("book-open", "\u4E13\u9898\u7814\u7A76", "\u56F4\u7ED5\u4E00\u4E2A\u95EE\u9898\uFF0C\u6574\u7406\u591A\u7BC7\u8BBA\u6587\u7684\u53D1\u73B0", () => this.plugin.activateLibrary("topic"));
       feature("lightbulb", "\u7814\u7A76\u60F3\u6CD5", "\u7559\u4E0B\u65B0\u7684\u60F3\u6CD5\uFF0C\u9010\u6B65\u5F62\u6210\u7814\u7A76\u65B9\u6848", () => this.plugin.activateLibrary("idea"));
       feature("layout-list", "\u8BBA\u6587\u5E93", "\u6D4F\u89C8\u5DF2\u6536\u5F55\u7684\u8BBA\u6587\uFF0C\u56DE\u770B\u5DF2\u6709\u7B14\u8BB0", () => this.plugin.activateLibrary("papers"));
+      this.activityEl = this.page.createEl("section", { cls: "pnx-activity", attr: { "aria-label": "\u7814\u7A76\u6D3B\u8DC3\u5EA6" } });
+      this.activityVersion = 0;
       const tools = this.page.createDiv({ cls: "pnx-home-utilities" });
       for (const [label, action] of [
         ["\u68C0\u67E5\u8D44\u6E90", () => this.libraryAction((library2) => library2.showUnreachable())],
@@ -5248,6 +5992,7 @@ ${node.basename}` : node.basename;
         if (leaf && leaf.view === this && !this.suppressFocusRefresh) this.refresh();
       }));
       await this.refresh();
+      await this.refreshActivity();
     }
     async perform(action) {
       try {
@@ -5256,6 +6001,196 @@ ${node.basename}` : node.basename;
         if (!this.closed) this.message.setText(error.message);
         new Notice("Pinakes:" + error.message);
       }
+    }
+    async refreshActivity() {
+      const version = ++this.activityVersion;
+      if (this.closed || !this.activityEl) return;
+      try {
+        const data = await activityLog(this.plugin).snapshot();
+        if (this.closed || version !== this.activityVersion) return;
+        const calendar = activityCalendar(data);
+        this.activityEl.empty();
+        const header = this.activityEl.createDiv({ cls: "pnx-activity-header" });
+        header.createEl("h2").setText("\u7814\u7A76\u8DB3\u8FF9");
+        const summary = header.createSpan({ cls: "pnx-activity-summary" });
+        summary.setText(`\u8FD1\u4E00\u5E74 ${calendar.total} \u6B21\u8BB0\u5F55 \xB7 ${calendar.activeDays} \u5929\u6D3B\u8DC3`);
+        const subline = this.activityEl.createDiv({ cls: "pnx-activity-subline" });
+        subline.createSpan().setText("\u6DFB\u52A0\u8BBA\u6587\u3001\u4FEE\u6539\u72B6\u6001\u3001\u7F16\u8F91\u7B14\u8BB0\uFF0C\u7559\u4E0B\u6BCF\u5929\u7684\u79EF\u7D2F\u3002");
+        subline.createSpan().setText(`\u4ECA\u5929 ${calendar.todayCount} \u6B21 \xB7 \u8FDE\u7EED ${calendar.streak} \u5929`);
+        const scroll = this.activityEl.createDiv({ cls: "pnx-activity-scroll" });
+        const chart = scroll.createDiv({ cls: "pnx-activity-chart" });
+        const monthLabels = chart.createDiv({ cls: "pnx-activity-months", attr: { "aria-hidden": "true" } });
+        monthLabels.style.gridTemplateColumns = `repeat(${calendar.weeks.length}, 12px)`;
+        for (const month of calendar.months) {
+          const label = monthLabels.createSpan();
+          label.setText(month.month + "\u6708");
+          label.style.gridColumn = String(month.week + 1);
+        }
+        const rows = chart.createDiv({ cls: "pnx-activity-rows" });
+        const weekdays = rows.createDiv({ cls: "pnx-activity-weekdays", attr: { "aria-hidden": "true" } });
+        for (const text of ["\u4E00", "", "\u4E09", "", "\u4E94", "", "\u65E5"]) weekdays.createSpan().setText(text);
+        const grid = rows.createDiv({ cls: "pnx-activity-grid", attr: { role: "group", "aria-label": "\u6700\u8FD1\u4E00\u5E74\u6BCF\u5929\u7684\u6D3B\u8DC3\u8BB0\u5F55" } });
+        const buttons = /* @__PURE__ */ new Map();
+        const textFor = (cell) => !cell.tracked ? `${cell.day}\uFF1A\u5C1A\u65E0\u7EDF\u8BA1\uFF0C\u4ECE ${calendar.startedOn} \u5F00\u59CB\u8BB0\u5F55\u3002` : `${cell.day}\uFF1A${cell.count} \u6B21\u8BB0\u5F55\uFF08\u6DFB\u52A0\u8BBA\u6587 ${cell.added}\uFF0C\u4FEE\u6539\u72B6\u6001 ${cell.status}\uFF0C\u7F16\u8F91\u7B14\u8BB0 ${cell.edited}\uFF09`;
+        for (const week of calendar.weeks) {
+          const column = grid.createDiv({ cls: "pnx-activity-week" });
+          for (const cell of week) {
+            if (!cell.inRange) {
+              column.createSpan({ cls: "pnx-activity-day is-outside", attr: { "aria-hidden": "true" } });
+              continue;
+            }
+            const button = column.createEl("button", { cls: "pnx-activity-day", attr: {
+              type: "button",
+              "data-level": String(cell.level),
+              "data-date": cell.day,
+              "aria-label": textFor(cell),
+              title: textFor(cell),
+              tabindex: cell.day === calendar.today ? "0" : "-1"
+            } });
+            if (cell.day === calendar.today) {
+              button.addClass("is-today");
+              button.setAttribute("aria-current", "date");
+            }
+            buttons.set(cell.day, button);
+            const select = () => {
+              for (const [day, item] of buttons) item.setAttribute("tabindex", day === cell.day ? "0" : "-1");
+            };
+            button.addEventListener("focus", select);
+            button.addEventListener("click", select);
+            button.addEventListener("keydown", (event) => {
+              var _a;
+              const delta = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
+              const next = event.key === "Home" ? calendar.first : event.key === "End" ? calendar.today : delta !== void 0 ? shiftDay(cell.day, delta) : null;
+              if (next) {
+                event.preventDefault();
+                (_a = buttons.get(next)) == null ? void 0 : _a.focus();
+              }
+            });
+          }
+        }
+        scroll.scrollLeft = scroll.scrollWidth;
+      } catch (error) {
+        if (!this.closed && version === this.activityVersion) {
+          this.activityEl.empty();
+          this.activityEl.createEl("p").setText("\u6D3B\u8DC3\u5EA6\u6682\u65F6\u65E0\u6CD5\u8BFB\u53D6\uFF1A" + error.message);
+        }
+      }
+    }
+    scheduleSuggestions() {
+      this.closeSuggestions();
+      if (!this.search.value.trim()) return;
+      this.searchTimer = setTimeout(() => {
+        this.searchTimer = null;
+        this.refreshSuggestions();
+      }, 100);
+    }
+    async refreshSuggestions() {
+      const query = this.search.value.trim(), version = ++this.searchVersion;
+      const current = () => !this.closed && !this.composing && version === this.searchVersion && query === this.search.value.trim();
+      if (!query) {
+        this.closeSuggestions();
+        return;
+      }
+      try {
+        const engine = paperSearch(this.plugin);
+        const local = await engine.suggest(query, 6, false);
+        if (!current()) return;
+        this.renderSuggestions(local, query);
+        const enhanced = await engine.suggest(query, 6, true);
+        if (current() && enhanced.source === "omnisearch") this.renderSuggestions(enhanced, query);
+      } catch (error) {
+        if (current()) {
+          this.searchResults = [];
+          this.searchActive = -1;
+          this.suggestions.empty();
+          this.suggestions.createDiv({ cls: "pnx-search-empty" }).setText("\u641C\u7D22\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u53EF\u4EE5\u70B9\u51FB\u641C\u7D22\u8FDB\u5165\u8BBA\u6587\u5E93\u91CD\u8BD5\u3002");
+          this.suggestions.show();
+          this.search.setAttribute("aria-expanded", "true");
+        }
+      }
+    }
+    renderSuggestions(response, query) {
+      var _a;
+      const selectedPath = (_a = this.searchResults[this.searchActive]) == null ? void 0 : _a.path;
+      this.searchResults = response.results;
+      this.searchActive = selectedPath ? this.searchResults.findIndex((entry) => entry.path === selectedPath) : -1;
+      this.suggestions.empty();
+      const label = this.suggestions.createDiv({ cls: "pnx-search-heading", attr: { role: "presentation" } });
+      label.setText(response.source === "omnisearch" ? "\u5339\u914D\u8BBA\u6587 \xB7 Omnisearch" : "\u5339\u914D\u8BBA\u6587");
+      if (!this.searchResults.length) this.suggestions.createDiv({ cls: "pnx-search-empty", attr: { role: "presentation" } }).setText("\u6CA1\u6709\u627E\u5230\u5339\u914D\u8BBA\u6587\uFF0C\u8BD5\u8BD5\u6807\u9898\u7F29\u5199\u6216\u65B9\u6CD5\u5173\u952E\u8BCD\u3002");
+      for (let index = 0; index < this.searchResults.length; index++) {
+        const entry = this.searchResults[index];
+        const row = this.suggestions.createEl("button", { cls: "pnx-search-option", attr: {
+          type: "button",
+          role: "option",
+          id: this.suggestions.id + "-" + index,
+          "aria-selected": "false",
+          tabindex: "-1"
+        } });
+        row.createEl("b").setText(entry.title);
+        const infoLine = [entry.year, entry.reading, ...entry.tags.slice(0, 3)].filter(Boolean).join(" \xB7 ");
+        row.createSpan({ cls: "pnx-search-option-meta" }).setText(infoLine);
+        if (entry.excerpt) row.createSpan({ cls: "pnx-search-option-excerpt" }).setText(entry.excerpt);
+        row.addEventListener("pointerdown", (event) => event.preventDefault());
+        row.addEventListener("mouseenter", () => {
+          this.searchActive = index;
+          this.updateSearchActive();
+        });
+        row.addEventListener("click", () => this.openSearchResult(entry));
+      }
+      this.suggestions.show();
+      this.search.setAttribute("aria-expanded", "true");
+      this.fitSuggestions();
+      this.searchAnnouncement.setText(`${this.searchResults.length} \u7BC7\u63A8\u8350\u8BBA\u6587\uFF0C\u53EF\u7528\u4E0A\u4E0B\u952E\u9009\u62E9\uFF0C\u56DE\u8F66\u6253\u5F00\u3002`);
+      this.updateSearchActive();
+    }
+    fitSuggestions() {
+      var _a;
+      const win = (_a = this.search.ownerDocument) == null ? void 0 : _a.defaultView;
+      if (!win || !this.search.getBoundingClientRect || !this.contentEl.getBoundingClientRect) return;
+      const input = this.search.getBoundingClientRect(), page = this.contentEl.getBoundingClientRect();
+      const bottom = Math.min(page.bottom, win.innerHeight || page.bottom);
+      const below = bottom - input.bottom - 16;
+      const above = input.top - Math.max(0, page.top) - 16;
+      const upwards = below < 130 && above > below;
+      this.suggestions.style.top = upwards ? "auto" : "calc(100% + 7px)";
+      this.suggestions.style.bottom = upwards ? "calc(100% + 7px)" : "auto";
+      this.suggestions.style.maxHeight = Math.max(80, Math.min(420, upwards ? above : below)) + "px";
+    }
+    updateSearchActive() {
+      var _a;
+      const rows = this.suggestions.querySelectorAll("button");
+      rows.forEach((row2, index) => {
+        row2.toggleClass("is-active", index === this.searchActive);
+        row2.setAttribute("aria-selected", String(index === this.searchActive));
+      });
+      const row = rows[this.searchActive];
+      if (row) {
+        this.search.setAttribute("aria-activedescendant", row.id);
+        (_a = row.scrollIntoView) == null ? void 0 : _a.call(row, { block: "nearest" });
+      } else this.search.removeAttribute("aria-activedescendant");
+    }
+    openSearchResult(entry) {
+      this.closeSuggestions();
+      if (!this.app.vault.getAbstractFileByPath(entry.path)) {
+        this.message.setText("\u8FD9\u7BC7\u8BBA\u6587\u5DF2\u79FB\u52A8\u6216\u5220\u9664\uFF0C\u8BF7\u91CD\u65B0\u641C\u7D22\u3002");
+        paperSearch(this.plugin).invalidate();
+        return;
+      }
+      this.plugin.openBrowse(entry.path);
+    }
+    closeSuggestions() {
+      var _a, _b, _c;
+      ++this.searchVersion;
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+      }
+      this.searchResults = [];
+      this.searchActive = -1;
+      (_a = this.suggestions) == null ? void 0 : _a.hide();
+      (_b = this.search) == null ? void 0 : _b.setAttribute("aria-expanded", "false");
+      (_c = this.search) == null ? void 0 : _c.removeAttribute("aria-activedescendant");
     }
     async libraryAction(action) {
       if (this.libraryBusy) return;
@@ -5332,7 +6267,7 @@ ${node.basename}` : node.basename;
           this.featured.createDiv({ cls: "pnx-home-paper-meta" }).setText(infoLine);
           const overview = browseNoteSnapshot(text).overview;
           const preview = this.featured.createDiv({ cls: "pnx-home-paper-preview markdown-rendered" });
-          if (overview.trim()) {
+          if (hasReadableSection(overview)) {
             this.previewComponent = this.plugin.addChild(new Component());
             await MarkdownRenderer.render(this.app, overview, preview, paper.path, this.previewComponent);
           } else preview.createEl("p").setText(fm.summary || "\u8FD9\u7BC7\u8FD8\u6CA1\u6709\u7EFC\u8FF0\uFF0C\u6253\u5F00\u7B14\u8BB0\u770B\u770B\u5427\u3002");
@@ -5359,6 +6294,7 @@ ${node.basename}` : node.basename;
     }
     onClose() {
       this.closed = true;
+      this.closeSuggestions();
       ++this.refreshVersion;
       this.clearPreview();
       this.contentEl.empty();
@@ -5486,14 +6422,14 @@ ${node.basename}` : node.basename;
           var _a;
           const fm = parseFrontmatter(r.content);
           const node = state.index.nodes.get(r.path);
-          return {
+          return prepareSearchEntry({
             ...r,
             fm,
             node,
             kind: fm.kind || kindOfPath(state.schema, r.path),
             title: fm.title || r.basename,
             direction: node && node.parent ? ((_a = state.index.nodes.get(node.parent)) == null ? void 0 : _a.title) || "" : ""
-          };
+          });
         }).filter((r) => r.kind === (this.mode === "topic" ? "topic" : this.mode === "idea" ? "idea" : "paper"));
         const paths = new Set(this.entries.map((r) => r.path));
         for (const path of this.selectedPapers) if (!paths.has(path)) this.selectedPapers.delete(path);
@@ -5517,10 +6453,12 @@ ${node.basename}` : node.basename;
       if (!this.entries) return;
       const f = this.filters;
       const q = f.q.trim().toLowerCase();
+      const ranked = searchEntries(this.entries, q);
+      const scores = new Map(ranked.map(({ entry, score }) => [entry.path, score]));
       const entries = this.entries.filter((r) => {
         const reading = r.fm.reading || READING_UNREAD;
-        return (!q || [r.title, r.basename, r.fm.summary, ...r.fm.tags || []].join(" ").toLowerCase().includes(q)) && (!f.reading || (f.reading === "active" ? [READING_UNREAD, "\u5728\u8BFB"].includes(reading) : reading === f.reading)) && (!f.year || String(r.fm.year) === f.year) && (!f.direction || r.direction === f.direction) && (!f.importance || (f.importance === "none" ? r.fm.importance == null : String(r.fm.importance) === f.importance)) && (!f.tag || (r.fm.tags || []).includes(f.tag));
-      }).sort((a, b) => f.sort === "title" ? a.title.localeCompare(b.title) : (f.sort === "importance" ? (b.fm.importance || 0) - (a.fm.importance || 0) : Number(b.fm.year || 0) - Number(a.fm.year || 0)) || a.title.localeCompare(b.title));
+        return (!q || scores.has(r.path)) && (!f.reading || (f.reading === "active" ? [READING_UNREAD, "\u5728\u8BFB"].includes(reading) : reading === f.reading)) && (!f.year || String(r.fm.year) === f.year) && (!f.direction || r.direction === f.direction) && (!f.importance || (f.importance === "none" ? r.fm.importance == null : String(r.fm.importance) === f.importance)) && (!f.tag || (r.fm.tags || []).includes(f.tag));
+      }).sort((a, b) => (q ? (scores.get(b.path) || 0) - (scores.get(a.path) || 0) : 0) || (f.sort === "title" ? a.title.localeCompare(b.title) : (f.sort === "importance" ? (b.fm.importance || 0) - (a.fm.importance || 0) : Number(b.fm.year || 0) - Number(a.fm.year || 0)) || a.title.localeCompare(b.title)));
       this.visibleEntries = entries;
       this.batchBar.toggle(["papers", "queue"].includes(this.mode));
       this.selectionLabel.setText(`\u5DF2\u9009 ${this.selectedPapers.size} \u7BC7`);
@@ -5553,7 +6491,7 @@ ${node.basename}` : node.basename;
         const actions = row.createDiv({ cls: "pnx-library-row-actions" });
         if (entry.kind === "paper") {
           const read = actions.createEl("button");
-          read.setText("\u5237\u8FD9\u7BC7");
+          read.setText("\u6253\u5F00\u8BBA\u6587\u5361\u7247");
           read.addEventListener("click", () => this.plugin.openBrowse(entry.path));
           const state = actions.createEl("select", { attr: { "aria-label": `\u4FEE\u6539 ${entry.title} \u7684\u9605\u8BFB\u72B6\u6001` } });
           for (const item of this.plugin.readingOptions()) state.createEl("option", { text: item.label, attr: { value: item.value } });
@@ -5571,15 +6509,22 @@ ${node.basename}` : node.basename;
           const attach = actions.createEl("button");
           attach.setText(rawPdf ? "\u66FF\u6362 PDF" : "\u8865\u5145 PDF");
           attach.addEventListener("click", () => this.plugin.openPdfDialog(entry.path));
+          const remove = actions.createEl("button", { cls: "pnx-delete-paper" });
+          remove.setText("\u5220\u9664\u8BBA\u6587");
+          remove.addEventListener("click", () => this.plugin.openDeletePaper(entry.path));
         }
       }
     }
     openFile(path) {
       return this.run(async () => {
+        var _a;
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!file) throw new Error("\u6587\u4EF6\u5DF2\u79FB\u52A8\uFF0C\u8BF7\u5237\u65B0\u5217\u8868\u3002");
-        if (file.extension === "md") await this.plugin.openPaperNote(file);
-        else await this.app.workspace.getLeaf("tab").openFile(file);
+        if (file.extension === "md") {
+          const fm = parseFrontmatter(await this.app.vault.read(file));
+          if ((fm.kind || kindOfPath(((_a = this.state) == null ? void 0 : _a.schema) || DEFAULT_SCHEMA, file.path)) === "paper") this.plugin.openBrowse(file.path);
+          else await this.plugin.openPaperNote(file);
+        } else await this.app.workspace.getLeaf("tab").openFile(file);
       });
     }
     async openArchive() {
@@ -5732,6 +6677,7 @@ ${node.basename}` : node.basename;
       this.directions = directions;
       this.onSubmit = onSubmit;
       this.allowNoPdf = !!opts.allowNoPdf;
+      this.openPaper = opts.openPaper;
       this.file = null;
       this.guess = null;
       this.requestVersion = 0;
@@ -5891,7 +6837,7 @@ ${node.basename}` : node.basename;
           contentEl.createEl("h3").setText("\u8BBA\u6587\u5DF2\u6536\u5F55");
           contentEl.createEl("p").setText(payload.title || payload.slug);
           const acts = contentEl.createDiv({ cls: "pnx-form-actions" });
-          for (const [label, path] of [["\u6253\u5F00\u7B14\u8BB0", result.notePath], ["\u6253\u5F00\u539F\u6587 PDF", result.pdfPath]]) {
+          for (const [label, path] of [["\u6253\u5F00\u8BBA\u6587\u5361\u7247", result.notePath], ["\u6253\u5F00\u539F\u6587 PDF", result.pdfPath]]) {
             if (!path) continue;
             const button = acts.createEl("button", { cls: "mod-cta" });
             button.setText(label);
@@ -5901,8 +6847,9 @@ ${node.basename}` : node.basename;
                 new Notice("\u6587\u4EF6\u5DF2\u79FB\u52A8\uFF0C\u8BF7\u5728\u8BBA\u6587\u5E93\u4E2D\u67E5\u627E\u3002");
                 return;
               }
-              await this.app.workspace.getLeaf("tab").openFile(file);
               this.close();
+              if (path === result.notePath && this.openPaper) this.openPaper(path);
+              else await this.app.workspace.getLeaf("tab").openFile(file);
             });
           }
           const done = acts.createEl("button");
@@ -5971,8 +6918,8 @@ ${node.basename}` : node.basename;
       this.contentEl.empty();
     }
   }
-  class BrowsePaperModal extends Modal {
-    constructor(app, plugin, initialPath = null, resume = false) {
+  class PaperCardModal extends Modal {
+    constructor(app, plugin, initialPath = null, resume = false, initialPosition = null) {
       super(app);
       styleModal(this);
       this.plugin = plugin;
@@ -5981,13 +6928,14 @@ ${node.basename}` : node.basename;
       this.closed = false;
       this.initialPath = initialPath;
       this.resume = resume;
+      this.initialPosition = initialPosition;
     }
     onOpen() {
       this.modalEl.addClass("pnx-browse-modal");
       const el = this.contentEl;
       el.addClass("pnx-browse");
       const top = el.createDiv({ cls: "pnx-browse-top" });
-      top.createEl("h2").setText("\u5237\u4E00\u5237");
+      top.createEl("h2").setText("\u8BBA\u6587\u5361\u7247");
       this.poolEl = top.createDiv({ cls: "pnx-browse-pool" });
       this.article = el.createEl("article", { cls: "pnx-browse-article" });
       this.article.addEventListener("scroll", () => {
@@ -6003,7 +6951,7 @@ ${node.basename}` : node.basename;
       this.info = heading.createDiv({ cls: "pnx-card-authors" });
       this.reader = this.article.createDiv({ cls: "pnx-browse-reader" });
       this.sections = {};
-      for (const [key, title] of [["overview", "\u6574\u4F53\u7EFC\u8FF0"], ["notes", "Notes"]]) {
+      for (const [key, title] of [["overview", "\u6574\u4F53\u7EFC\u8FF0"], ["notes", "\u9605\u8BFB\u968F\u8BB0"]]) {
         const section = this.reader.createEl("section", { cls: "pnx-browse-section pnx-browse-" + key });
         const titleEl = section.createEl("h4", { cls: "pnx-browse-section-title" });
         titleEl.setText(title);
@@ -6021,7 +6969,9 @@ ${node.basename}` : node.basename;
       const footer = el.createDiv({ cls: "pnx-browse-footer" });
       this.meta = footer.createDiv({ cls: "pnx-card-meta" });
       const actions = footer.createDiv({ cls: "pnx-browse-actions" });
-      this.editButton = this.button(actions, "\u7F16\u8F91\u5185\u5BB9", () => this.run(async () => {
+      const auxiliary = actions.createDiv({ cls: "pnx-paper-tools", attr: { role: "group", "aria-label": "\u8BBA\u6587\u64CD\u4F5C" } });
+      const primary = actions.createDiv({ cls: "pnx-paper-primary", attr: { role: "group", "aria-label": "\u9605\u8BFB\u64CD\u4F5C" } });
+      this.editButton = this.button(auxiliary, "\u7F16\u8F91\u5185\u5BB9", () => this.run(async () => {
         if (this.editing) {
           await this.savePending();
           this.editing = false;
@@ -6044,13 +6994,15 @@ ${node.basename}` : node.basename;
         this.updateEditor();
         this.status.setText("\u5DF2\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539");
       }));
-      this.openButton = this.button(actions, "\u6253\u5F00\u7B14\u8BB0", () => this.run(async () => {
+      this.openButton = this.button(primary, "\u6253\u5F00\u7B14\u8BB0", () => this.run(async () => {
         await this.savePending();
-        await this.plugin.openPaperNote(this.file);
+        const top2 = Number(this.article.scrollTop) || 0;
+        const max = Math.max(0, (this.article.scrollHeight || 0) - (this.article.clientHeight || 0));
+        await this.plugin.openPaperNote(this.file, false, { kind: "browse", top: top2, max, ratio: max ? top2 / max : 0 });
         this.closed = true;
         super.close();
       }));
-      this.graphButton = this.button(actions, "\u5728\u56FE\u8C31\u4E2D\u67E5\u770B", () => this.run(async () => {
+      this.graphButton = this.button(auxiliary, "\u5728\u56FE\u8C31\u4E2D\u67E5\u770B", () => this.run(async () => {
         await this.savePending();
         await this.plugin.activateView();
         const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
@@ -6061,18 +7013,27 @@ ${node.basename}` : node.basename;
         this.closed = true;
         super.close();
       }));
-      this.nextButton = this.button(actions, "\u518D\u5237\u4E00\u7BC7", () => this.run(() => this.nextPaper()));
-      this.pdfButton = this.button(actions, "\u8865\u5145\uFF0F\u66FF\u6362 PDF", () => this.run(async () => {
+      this.nextButton = this.button(primary, "\u518D\u5237\u4E00\u7BC7", () => this.run(() => this.nextPaper()));
+      this.openButton.addClass("pnx-paper-open");
+      this.pdfButton = this.button(auxiliary, "\u8865\u5145\uFF0F\u66FF\u6362 PDF", () => this.run(async () => {
         await this.savePending();
         await this.plugin.openPdfDialog(this.file.path);
       }));
+      this.deleteButton = this.button(auxiliary, "\u5220\u9664\u8BBA\u6587", () => this.run(async () => {
+        await this.savePending();
+        await this.plugin.openDeletePaper(this.file.path, async () => {
+          this.closed = true;
+          super.close();
+        });
+      }));
+      this.deleteButton.addClass("pnx-delete-paper");
       this.nextButton.addClass("mod-cta");
       this.status = footer.createDiv({ cls: "pnx-browse-status", attr: { role: "status", "aria-live": "polite" } });
       return this.run(async () => {
         if (this.initialPath) {
           const paper = (await this.plugin.browsePapers()).find((p) => p.path === this.initialPath);
           if (paper) {
-            this.poolEl.setText("\u9996\u9875\u63A8\u8350");
+            this.poolEl.setText("");
             await this.showPaper(paper.file);
             return;
           }
@@ -6081,10 +7042,31 @@ ${node.basename}` : node.basename;
       });
     }
     button(parent, label, action) {
-      const button = parent.createEl("button");
-      button.setText(label);
+      const button = parent.createEl("button", { cls: "pnx-paper-action", attr: { type: "button", "aria-label": label } });
+      this.actionLabel(button, label);
       button.addEventListener("click", action);
       return button;
+    }
+    actionLabel(button, label) {
+      const icons = {
+        "\u7F16\u8F91\u5185\u5BB9": "pencil",
+        "\u4FDD\u5B58\u5E76\u9884\u89C8": "check",
+        "\u4FDD\u5B58\u4FEE\u6539": "save",
+        "\u91CD\u65B0\u8F7D\u5165": "refresh-cw",
+        "\u653E\u5F03\u4FEE\u6539": "undo-2",
+        "\u6253\u5F00\u7B14\u8BB0": "book-open",
+        "\u5728\u56FE\u8C31\u4E2D\u67E5\u770B": "network",
+        "\u518D\u5237\u4E00\u7BC7": "shuffle",
+        "\u8865\u5145\uFF0F\u66FF\u6362 PDF": "file-plus",
+        "\u5220\u9664\u8BBA\u6587": "trash-2"
+      };
+      button.empty();
+      if (icons[label]) {
+        const icon = button.createSpan({ cls: "pnx-paper-action-icon", attr: { "aria-hidden": "true" } });
+        setIcon(icon, icons[label]);
+      }
+      button.createSpan({ cls: "pnx-paper-action-label" }).setText(label);
+      button.setAttribute("aria-label", label);
     }
     async run(action) {
       if (this.busy || this.closed) return;
@@ -6095,7 +7077,7 @@ ${node.basename}` : node.basename;
       } catch (error) {
         this.closeRequested = false;
         this.status.setText(error.message);
-        new Notice("\u5237\u4E00\u5237:" + error.message);
+        new Notice("\u8BBA\u6587\u5361\u7247\uFF1A" + error.message);
       } finally {
         this.busy = false;
         if (!this.closed) this.updateControls();
@@ -6108,9 +7090,9 @@ ${node.basename}` : node.basename;
     loadEditors() {
       for (const key of ["overview", "notes"]) {
         const section = this.sections[key];
-        section.input.value = this.base ? this.base[key].trim() : "";
+        section.input.value = this.base && hasReadableSection(this.base[key]) ? this.base[key].trim() : "";
         section.loadedValue = section.input.value;
-        section.titleEl.setText(this.base && this.base[key + "Section"] ? this.base[key + "Section"].title : key === "overview" ? "\u6574\u4F53\u7EFC\u8FF0" : "Notes");
+        section.titleEl.setText(key === "overview" ? "\u6574\u4F53\u7EFC\u8FF0" : "\u9605\u8BFB\u968F\u8BB0");
       }
     }
     draft() {
@@ -6131,7 +7113,7 @@ ${node.basename}` : node.basename;
     }
     updateControls() {
       for (const button of this.contentEl.querySelectorAll("button")) button.disabled = this.busy;
-      for (const button of [this.editButton, this.openButton, this.graphButton, this.discardButton, this.pdfButton])
+      for (const button of [this.editButton, this.openButton, this.graphButton, this.discardButton, this.pdfButton, this.deleteButton])
         button.disabled = this.busy || !this.file;
       this.saveButton.disabled = this.busy || !this.file || !this.isDirty();
       for (const section of Object.values(this.sections)) section.input.disabled = this.busy || !this.file;
@@ -6144,7 +7126,7 @@ ${node.basename}` : node.basename;
         if (this.editing) this.resizeEditor(section.input);
       }
       this.editActions.toggle(this.editing);
-      this.editButton.setText(this.editing ? "\u4FDD\u5B58\u5E76\u9884\u89C8" : "\u7F16\u8F91\u5185\u5BB9");
+      this.actionLabel(this.editButton, this.editing ? "\u4FDD\u5B58\u5E76\u9884\u89C8" : "\u7F16\u8F91\u5185\u5BB9");
     }
     resizeEditor(input) {
       if (!input.style) return;
@@ -6167,10 +7149,10 @@ ${node.basename}` : node.basename;
       for (const key of ["overview", "notes"]) {
         const section = this.sections[key];
         section.content.empty();
-        if (this.base[key].trim()) {
+        if (hasReadableSection(this.base[key])) {
           await MarkdownRenderer.render(this.app, this.base[key], section.content, this.file.path, this.renderComponent);
         } else {
-          section.content.createEl("p", { cls: "pnx-browse-missing" }).setText(key === "overview" ? "\u8FD9\u7BC7\u8FD8\u6CA1\u6709\u6574\u4F53\u7EFC\u8FF0\uFF0C\u53EF\u4EE5\u6253\u5F00\u7B14\u8BB0\u770B\u770B\uFF0C\u6216\u5728\u8FD9\u91CC\u8865\u5145\u3002" : "\u8FD8\u6CA1\u5199\u4E0B\u60F3\u6CD5\u3002\u8BFB\u5230\u6709\u542F\u53D1\u7684\u5730\u65B9\uFF0C\u5C31\u8BB0\u5728\u8FD9\u91CC\u3002");
+          section.content.createEl("p", { cls: "pnx-browse-missing" }).setText(key === "overview" ? "\u8FD9\u7BC7\u8FD8\u6CA1\u6709\u6574\u4F53\u7EFC\u8FF0\uFF0C\u53EF\u4EE5\u6253\u5F00\u7B14\u8BB0\u770B\u770B\uFF0C\u6216\u5728\u8FD9\u91CC\u8865\u5145\u3002" : this.base.legacyDetailedNotes ? "\u65E7 Notes \u4E2D\u4FDD\u5B58\u4E86\u8BBA\u6587\u7EC6\u8282\uFF0C\u8BF7\u5728\u5B8C\u6574\u7B14\u8BB0\u4E2D\u9605\u8BFB\u3002\u8FD9\u91CC\u53EF\u4EE5\u53E6\u5199\u81EA\u5DF1\u7684\u7406\u89E3\u3001\u7591\u95EE\u548C\u542F\u53D1\u3002" : "\u8FD8\u6CA1\u5199\u4E0B\u60F3\u6CD5\u3002\u8BFB\u5230\u6709\u542F\u53D1\u7684\u5730\u65B9\uFF0C\u5C31\u8BB0\u5728\u8FD9\u91CC\u3002");
         }
       }
     }
@@ -6182,7 +7164,8 @@ ${node.basename}` : node.basename;
         globalThis.clearTimeout(this.positionTimer);
         this.positionTimer = null;
       }
-      const savedPosition = this.resume ? readingSession(this.plugin).position(file.path) : null;
+      const savedPosition = this.initialPosition || (this.resume ? readingSession(this.plugin).position(file.path) : null);
+      this.initialPosition = null;
       const text = await this.app.vault.read(file);
       this.file = file;
       this.base = browseNoteSnapshot(text);
@@ -6247,6 +7230,7 @@ ${node.basename}` : node.basename;
         const saved = await this.app.vault.process(this.file, (text) => patchBrowseNote(text, this.base, draft));
         this.base = browseNoteSnapshot(saved);
         this.loadEditors();
+        await this.plugin.trackActivityFile(this.file);
       }
       await this.plugin.refreshBrowseViews();
       if (!this.editing) await this.renderBody();
@@ -6259,6 +7243,7 @@ ${node.basename}` : node.basename;
         field,
         value
       ));
+      await this.plugin.trackActivityFile(this.file);
       await this.plugin.refreshBrowseViews();
       await this.showPaper(this.file);
       this.status.setText("\u5DF2\u4FDD\u5B58");
@@ -6325,6 +7310,28 @@ ${node.basename}` : node.basename;
   class ExplorerPlugin extends Plugin {
     async onload() {
       this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+      try {
+        await activityLog(this).init();
+      } catch (error) {
+        this.reportActivityError(error);
+      }
+      this.registerEvent(this.app.vault.on("create", (file) => activityLog(this).schedule(file, true)));
+      this.registerEvent(this.app.vault.on("modify", (file) => activityLog(this).schedule(file)));
+      this.registerEvent(this.app.vault.on("rename", (file, oldPath) => activityLog(this).rename(file, oldPath)));
+      this.registerEvent(this.app.vault.on("delete", (file) => activityLog(this).remove(file)));
+      this.register(() => {
+        activityLog(this).dispose().catch((error) => this.reportActivityError(error));
+      });
+      for (const event of ["create", "modify", "delete", "rename"]) {
+        this.registerEvent(this.app.vault.on(event, () => {
+          var _a;
+          paperSearch(this).invalidate();
+          for (const leaf of this.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) {
+            const home = leaf.view;
+            if (((_a = home.search) == null ? void 0 : _a.getAttribute("aria-expanded")) === "true") home.scheduleSuggestions();
+          }
+        }));
+      }
       this.addSettingTab(new ExplorerSettingTab(this.app, this));
       this.registerView(VIEW_TYPE, (leaf) => new ExplorerView(leaf, this));
       this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
@@ -6332,6 +7339,24 @@ ${node.basename}` : node.basename;
       this.addRibbonIcon("house", "Pinakes \u9996\u9875", () => this.activateHome());
       this.addCommand({ id: "open-home", name: "\u6253\u5F00\u9996\u9875", callback: () => this.activateHome() });
       this.addCommand({ id: "browse-papers", name: "\u5237\u4E00\u5237\u8BBA\u6587", callback: () => this.openBrowse() });
+      this.noteCardActions = /* @__PURE__ */ new Map();
+      const refreshNoteCards = () => this.refreshNoteCardActions();
+      for (const event of ["file-open", "active-leaf-change", "layout-change"])
+        this.registerEvent(this.app.workspace.on(event, refreshNoteCards));
+      for (const event of ["rename", "delete"])
+        this.registerEvent(this.app.vault.on(event, refreshNoteCards));
+      this.app.workspace.onLayoutReady(refreshNoteCards);
+      this.register(() => {
+        for (const entry of this.noteCardActions.values()) entry.button.remove();
+        this.noteCardActions.clear();
+      });
+      this.addCommand({ id: "return-paper-card", name: "\u8FD4\u56DE\u5F53\u524D\u8BBA\u6587\u5361\u7247", checkCallback: (checking) => {
+        var _a;
+        const view = (_a = this.app.workspace.activeLeaf) == null ? void 0 : _a.view;
+        if (!this.isPaperNoteView(view)) return false;
+        if (!checking) this.returnToPaperCard(view);
+        return true;
+      } });
       this.addCommand({ id: "open-library", name: "\u6253\u5F00\u8BBA\u6587\u5E93", callback: () => this.activateLibrary("papers") });
       this.addCommand({ id: "open-queue", name: "\u6253\u5F00\u9605\u8BFB\u961F\u5217", callback: () => this.activateLibrary("queue") });
       this.addCommand({ id: "recover-operations", name: "\u6062\u590D\u672A\u5B8C\u6210\u64CD\u4F5C", callback: () => this.openRecovery() });
@@ -6462,21 +7487,127 @@ ${node.basename}` : node.basename;
         }
       });
     }
-    openBrowse(initialPath = null, resume = false) {
+    reportActivityError(error) {
+      if (this.activityError === error.message) return;
+      this.activityError = error.message;
+      new Notice("\u8BBA\u6587\u64CD\u4F5C\u4E0D\u53D7\u5F71\u54CD\uFF0C\u4F46\u6D3B\u8DC3\u5EA6\u6682\u672A\u4FDD\u5B58\uFF1A" + error.message);
+    }
+    async recordActivity(type, id) {
+      try {
+        await activityLog(this).record(type, id);
+        this.activityError = null;
+      } catch (error) {
+        this.reportActivityError(error);
+      }
+    }
+    async trackActivityFile(file, created = false) {
+      try {
+        await activityLog(this).observe(file, created);
+        this.activityError = null;
+      } catch (error) {
+        this.reportActivityError(error);
+      }
+    }
+    async guardActivity(paths) {
+      try {
+        const release = await activityLog(this).guard(paths);
+        return async () => {
+          try {
+            await release();
+          } catch (error) {
+            this.reportActivityError(error);
+          }
+        };
+      } catch (error) {
+        this.reportActivityError(error);
+        return async () => {
+        };
+      }
+    }
+    isPaperNoteView(view) {
+      var _a, _b;
+      if ((view == null ? void 0 : view.getViewType()) !== "markdown" || !view.file) return false;
+      const file = view.file;
+      if (this.app.vault.getAbstractFileByPath(file.path) !== file) return false;
+      const fm = ((_b = (_a = this.app.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter) || {};
+      return (fm.kind || kindOfPath(this.cachedSchema || DEFAULT_SCHEMA, file.path)) === "paper";
+    }
+    refreshNoteCardActions() {
+      this.noteCardActions || (this.noteCardActions = /* @__PURE__ */ new Map());
+      const views = new Set(this.app.workspace.getLeavesOfType("markdown").map((leaf) => leaf.view));
+      for (const [view, entry] of this.noteCardActions || []) {
+        if (!views.has(view) || !this.isPaperNoteView(view)) {
+          entry.button.remove();
+          this.noteCardActions.delete(view);
+        }
+      }
+      for (const view of views) {
+        if (!this.isPaperNoteView(view) || typeof view.addAction !== "function") continue;
+        let entry = this.noteCardActions.get(view);
+        if (entry) {
+          if (entry.file !== view.file) {
+            entry.file = view.file;
+            entry.position = null;
+          }
+          continue;
+        }
+        const button = view.addAction("arrow-left", "\u8FD4\u56DE\u8BBA\u6587\u5361\u7247", () => this.returnToPaperCard(view));
+        button.addClass("pnx-note-card-return");
+        button.setAttribute("role", "button");
+        button.setAttribute("tabindex", "0");
+        button.setAttribute("aria-label", "\u8FD4\u56DE\u8BBA\u6587\u5361\u7247");
+        button.createSpan({ cls: "pnx-note-card-return-label" }).setText("\u8FD4\u56DE\u8BBA\u6587\u5361\u7247");
+        button.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this.returnToPaperCard(view);
+          }
+        });
+        this.noteCardActions.set(view, { button, file: view.file, position: null, busy: false });
+      }
+    }
+    async returnToPaperCard(view) {
+      var _a;
+      if (!this.isPaperNoteView(view) || this.browseModal) return;
+      const entry = (_a = this.noteCardActions) == null ? void 0 : _a.get(view);
+      if (entry == null ? void 0 : entry.busy) return;
+      const file = view.file;
+      if (entry) {
+        entry.busy = true;
+        entry.button.setAttribute("aria-busy", "true");
+      }
+      try {
+        await view.save();
+        if (view.file !== file || !this.isPaperNoteView(view)) return;
+        this.openBrowse(file.path, false, (entry == null ? void 0 : entry.file) === file ? entry.position : null);
+      } catch (error) {
+        new Notice("\u6682\u65F6\u65E0\u6CD5\u8FD4\u56DE\u8BBA\u6587\u5361\u7247\uFF1A" + error.message);
+      } finally {
+        if (entry) {
+          entry.busy = false;
+          entry.button.removeAttribute("aria-busy");
+        }
+      }
+    }
+    openBrowse(initialPath = null, resume = false, initialPosition = null) {
       if (this.browseModal) return;
       this.nativeReading = null;
-      this.browseModal = new BrowsePaperModal(this.app, this, initialPath, resume);
+      this.browseModal = new PaperCardModal(this.app, this, initialPath, resume, initialPosition);
       this.browseModal.open();
     }
     async browseSchema() {
       this.cachedSchema = await libraryService(this).schema();
       return this.cachedSchema;
     }
-    async openPaperNote(file, resume = false) {
+    async openPaperNote(file, resume = false, cardPosition = null) {
+      var _a;
       if (!file) throw new Error("\u7B14\u8BB0\u5DF2\u79FB\u52A8\u6216\u5220\u9664\uFF0C\u8BF7\u5237\u65B0\u5217\u8868\u3002");
       const saved = resume ? readingSession(this).position(file.path) : null;
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.openFile(file, (saved == null ? void 0 : saved.kind) === "markdown" ? { state: saved.state } : void 0);
+      this.refreshNoteCardActions();
+      const cardAction = (_a = this.noteCardActions) == null ? void 0 : _a.get(leaf.view);
+      if (cardAction) cardAction.position = cardPosition;
       const fm = parseFrontmatter(await this.app.vault.read(file));
       const state = leaf.view && typeof leaf.view.getState === "function" ? leaf.view.getState() : {};
       const position = (saved == null ? void 0 : saved.kind) === "markdown" ? saved : { kind: "markdown", state: {
@@ -6520,6 +7651,7 @@ ${node.basename}` : node.basename;
     async setNoteField(file, field, value) {
       try {
         await this.app.vault.process(file, (text) => patchScalarField(text, field, value));
+        await this.trackActivityFile(file);
         new Notice(`${file.basename}:${field === "importance" ? "\u91CD\u8981\u5EA6 = " + value : "\u9605\u8BFB\u72B6\u6001 = " + value}`);
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
           const view = leaf.view;
@@ -6540,6 +7672,59 @@ ${node.basename}` : node.basename;
       else await leaf.view.refresh();
       await this.app.workspace.revealLeaf(leaf);
       return leaf.view;
+    }
+    async openDeletePaper(notePath, onDeleted = null) {
+      const file = this.app.vault.getAbstractFileByPath(notePath);
+      if (!file) {
+        new Notice("\u8BBA\u6587\u5DF2\u79FB\u52A8\u6216\u5220\u9664\uFF0C\u8BF7\u5237\u65B0\u5217\u8868\u3002");
+        return;
+      }
+      const fm = parseFrontmatter(await this.app.vault.read(file));
+      const modal = new Modal(this.app);
+      styleModal(modal);
+      modal.setTitle("\u5220\u9664\u6574\u7BC7\u8BBA\u6587\uFF1F");
+      modal.contentEl.createEl("p").setText(fm.title || file.basename);
+      modal.contentEl.createEl("p").setText("\u7B14\u8BB0\u3001PDF \u548C\u8FD9\u4E2A\u8BBA\u6587\u6587\u4EF6\u5939\u4E2D\u7684\u6240\u6709\u9644\u4EF6\u90FD\u4F1A\u79FB\u5230\u56DE\u6536\u7AD9\u3002\u5220\u9664\u524D\u4F1A\u5907\u4EFD\uFF0C\u5176\u4ED6\u7B14\u8BB0\u4E2D\u7684\u5F15\u7528\u4E0D\u4F1A\u81EA\u52A8\u5220\u9664\u3002");
+      modal.contentEl.createEl("p", { cls: "pnx-resource-why" }).setText(posixDirname(notePath));
+      const status = modal.contentEl.createDiv({ cls: "pnx-form-error", attr: { role: "status", "aria-live": "polite" } });
+      const actions = modal.contentEl.createDiv({ cls: "pnx-form-actions" });
+      const cancel = actions.createEl("button");
+      cancel.setText("\u53D6\u6D88");
+      cancel.addEventListener("click", () => modal.close());
+      const remove = actions.createEl("button", { cls: "pnx-delete-paper" });
+      remove.setText("\u79FB\u5230\u56DE\u6536\u7AD9");
+      let busy = false;
+      const close = modal.close.bind(modal);
+      modal.close = () => {
+        if (!busy) close();
+      };
+      remove.addEventListener("click", async () => {
+        if (busy) return;
+        busy = true;
+        cancel.disabled = true;
+        remove.disabled = true;
+        status.setText("\u6B63\u5728\u5907\u4EFD\u5E76\u5220\u9664\u2026");
+        try {
+          const result = await libraryService(this).deletePaper(notePath);
+          if (onDeleted) await onDeleted();
+          try {
+            await this.refreshBrowseViews();
+          } catch (error) {
+            new Notice("\u8BBA\u6587\u5DF2\u5220\u9664\uFF0C\u91CD\u65B0\u6253\u5F00\u9875\u9762\u5373\u53EF\u5237\u65B0\u5217\u8868\u3002");
+          }
+          new Notice(result.warning || "\u6574\u7BC7\u8BBA\u6587\u5DF2\u79FB\u5230\u56DE\u6536\u7AD9\uFF0C\u65B9\u5411\u7D22\u5F15\u5DF2\u66F4\u65B0\u3002");
+          busy = false;
+          modal.close();
+        } catch (error) {
+          status.setText(error.message);
+        } finally {
+          busy = false;
+          cancel.disabled = false;
+          remove.disabled = false;
+        }
+      });
+      modal.open();
+      return modal;
     }
     async openPdfDialog(notePath) {
       const file = this.app.vault.getAbstractFileByPath(notePath);
@@ -6619,7 +7804,7 @@ ${node.basename}` : node.basename;
         if (!operations.length) list.createEl("p").setText("\u6CA1\u6709\u672A\u5B8C\u6210\u64CD\u4F5C\u3002");
         for (const operation of operations) {
           const row = list.createDiv({ cls: "pnx-resource-row" });
-          row.createEl("b").setText({ reverse: "\u5173\u7CFB\u7FFB\u8F6C", import: "\u8BBA\u6587\u5BFC\u5165", pdf: "PDF \u66F4\u65B0", move: "\u8BBA\u6587\u5F52\u6863" }[operation.kind] || "\u6587\u4EF6\u64CD\u4F5C");
+          row.createEl("b").setText({ reverse: "\u5173\u7CFB\u7FFB\u8F6C", import: "\u8BBA\u6587\u5BFC\u5165", pdf: "PDF \u66F4\u65B0", move: "\u8BBA\u6587\u5F52\u6863", delete: "\u8BBA\u6587\u5220\u9664" }[operation.kind] || "\u6587\u4EF6\u64CD\u4F5C");
           row.createSpan().setText(operation.kind === "reverse" ? `${operation.srcBase} \u2192 ${operation.dstBase}` : operation.notePath);
           const actions = row.createDiv({ cls: "pnx-form-actions" });
           const button = actions.createEl("button");
@@ -6631,7 +7816,7 @@ ${node.basename}` : node.basename;
                 const results = await service.recoverRelations();
                 const failed = results.find((r) => !r.ok);
                 if (failed) throw new Error(failed.error);
-              } else if (["pdf", "move"].includes(operation.kind)) await service.recoverOperation(operation.id);
+              } else if (["pdf", "move", "delete"].includes(operation.kind)) await service.recoverOperation(operation.id);
               else await service.finishImport(operation.id);
               await this.refreshBrowseViews();
               status.setText("\u5DF2\u5904\u7406");
@@ -6870,6 +8055,7 @@ if (obsidian) {
     isContainerNode,
     isPaperContainer,
     patchPdfReference,
+    hasReadableSection,
     splitFrontmatter,
     groupFields,
     posixDirname,
